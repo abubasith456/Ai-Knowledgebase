@@ -1,21 +1,65 @@
 """
-Clean ChromaDB client wrapper without telemetry.
-Simple and direct ChromaDB client implementation.
+Clean ChromaDB client wrapper with complete telemetry disable.
+Aggressively disables ChromaDB's internal telemetry system.
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-# Import chromadb directly
+# Completely disable telemetry at the system level
+os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
+os.environ["CHROMA_TELEMETRY"] = "FALSE"
+os.environ["CHROMA_SERVER_TELEMETRY"] = "FALSE"
+os.environ["CHROMA_CLIENT_TELEMETRY"] = "FALSE"
+
+# Aggressive telemetry bypass - patch before importing chromadb
+class NoOpTelemetry:
+    """Complete no-op telemetry replacement."""
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def capture(self, *args, **kwargs):
+        pass
+    
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+# Patch all possible telemetry modules before importing chromadb
+def disable_chroma_telemetry():
+    """Completely disable ChromaDB telemetry."""
+    # Create mock telemetry modules
+    mock_telemetry = type(sys)('chromadb.telemetry')
+    mock_telemetry.TelemetryClient = NoOpTelemetry
+    mock_telemetry.telemetry_client = NoOpTelemetry()
+    
+    # Patch all possible telemetry paths
+    telemetry_paths = [
+        'chromadb.telemetry',
+        'chromadb.telemetry.telemetry',
+        'chromadb.telemetry.client',
+        'chromadb.telemetry.events',
+        'chromadb.telemetry.telemetry_client',
+    ]
+    
+    for path in telemetry_paths:
+        try:
+            sys.modules[path] = mock_telemetry
+        except:
+            pass
+
+# Disable telemetry before importing chromadb
+disable_chroma_telemetry()
+
+# Now import chromadb
 import chromadb
 from chromadb.config import Settings
 
 def get_chroma_client() -> chromadb.Client:
     """
-    Get a ChromaDB client without any telemetry.
-    Simple and clean implementation.
+    Get a ChromaDB client with telemetry completely disabled.
     """
     host = os.environ.get("CHROMA_HOST")
     
@@ -32,8 +76,9 @@ def get_chroma_client() -> chromadb.Client:
         
         logger.info(f"Using local ChromaDB storage at: {data_dir}")
         
-        # Create settings without telemetry
+        # Create settings with telemetry disabled
         settings = Settings(
+            anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True
         )
@@ -43,6 +88,19 @@ def get_chroma_client() -> chromadb.Client:
             path=str(data_dir),
             settings=settings
         )
+        
+        # Additional telemetry disable on client
+        try:
+            # Disable telemetry on client instance
+            if hasattr(client, '_telemetry_client'):
+                client._telemetry_client = NoOpTelemetry()
+            
+            # Disable telemetry on internal client
+            if hasattr(client, '_client') and hasattr(client._client, 'telemetry_client'):
+                client._client.telemetry_client = NoOpTelemetry()
+                
+        except Exception as e:
+            logger.debug(f"Telemetry disable completed: {e}")
         
         return client
 
