@@ -19,9 +19,16 @@ except ImportError:
 	from embeddings import get_embedding_function
 
 
-DATA_DIR = Path(os.environ.get("CHROMA_DATA_DIR") or (Path.cwd() / "data" / "chroma"))
-UPLOAD_DIR = DATA_DIR / "uploads"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# Use a more reliable path for uploads
+try:
+    DATA_DIR = Path(os.environ.get("CHROMA_DATA_DIR") or "./data")
+    UPLOAD_DIR = DATA_DIR / "uploads"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+except (OSError, PermissionError):
+    # Fallback to temp directory if we can't create the default path
+    import tempfile
+    UPLOAD_DIR = Path(tempfile.gettempdir()) / "doc_kb_uploads"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _client() -> chromadb.Client:

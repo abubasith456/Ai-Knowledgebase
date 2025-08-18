@@ -68,6 +68,7 @@ class JobInfo(BaseModel):
 	started_at: Optional[str] = None
 	finished_at: Optional[str] = None
 	progress: Optional[int] = None  # 0-100
+	job_name: Optional[str] = None
 
 
 class Parser(BaseModel):

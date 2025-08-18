@@ -17,6 +17,7 @@ class Job:
 	indexing_status: Optional[str]
 	started_at: str
 	finished_at: Optional[str]
+	job_name: Optional[str] = None
 
 
 _jobs: Dict[str, Job] = {}
@@ -27,19 +28,20 @@ def _now() -> str:
 	return datetime.now(timezone.utc).isoformat()
 
 
-def create_job(job_type: str, file_id: Optional[str] = None, document_name: Optional[str] = None) -> str:
+def create_job(job_type: str, file_id: Optional[str] = None, document_name: Optional[str] = None, job_name: Optional[str] = None, message: Optional[str] = None) -> str:
 	job_id = str(uuid.uuid4())
 	job = Job(
 		id=job_id,
 		type=job_type,
 		status="processing",
-		message=None,
+		message=message,
 		file_id=file_id,
 		document_name=document_name,
 		num_chunks=None,
 		indexing_status="pending" if job_type == "ingest" else None,
 		started_at=_now(),
 		finished_at=None,
+		job_name=job_name,
 	)
 	with _lock:
 		_jobs[job_id] = job

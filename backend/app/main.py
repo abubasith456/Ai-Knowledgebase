@@ -70,11 +70,27 @@ def upload(file: UploadFile = File(...), parser_id: str = "default"):
 		if not parser:
 			raise HTTPException(status_code=400, detail=f"Parser '{parser_id}' not found")
 		
+		# Use filename as document name
+		document_name = file.filename or "unknown_file"
+		job_name = f"Upload: {document_name}"
+		
 		file_id, path = save_upload_temp(file)
-		job_id = create_job("upload", file_id=file_id, message=f"Uploaded with {parser.name}")
+		job_id = create_job(
+			job_type="upload", 
+			file_id=file_id, 
+			document_name=document_name,
+			job_name=job_name,
+			message=f"Uploading {document_name} with {parser.name}"
+		)
 		# Upload completes immediately; mark completed
-		complete_job(job_id, message=f"uploaded with {parser.name}")
-		return {"file_id": file_id, "path": path, "job_id": job_id, "parser_id": parser_id}
+		complete_job(job_id, message=f"Successfully uploaded {document_name}")
+		return {
+			"file_id": file_id, 
+			"path": path, 
+			"job_id": job_id, 
+			"parser_id": parser_id,
+			"document_name": document_name
+		}
 	except Exception as exc:
 		logger.exception("Upload failed")
 		raise HTTPException(status_code=500, detail=str(exc))
@@ -88,7 +104,19 @@ def ingest(payload: IngestRequest, background: BackgroundTasks):
 		if not index:
 			raise HTTPException(status_code=400, detail=f"Index '{payload.index_id}' not found")
 	
-	job_id = create_job("ingest", file_id=payload.file_id, document_name=payload.document_name)
+	# Create descriptive job name
+	job_name = f"Ingest: {payload.document_name}"
+	if payload.index_id:
+		index_name = get_index(payload.index_id).name if get_index(payload.index_id) else "Unknown Index"
+		job_name += f" → {index_name}"
+	
+	job_id = create_job(
+		job_type="ingest", 
+		file_id=payload.file_id, 
+		document_name=payload.document_name,
+		job_name=job_name,
+		message=f"Starting ingestion of {payload.document_name}"
+	)
 
 	def _run_ingest():
 		try:
@@ -157,7 +185,12 @@ def create_new_index(payload: IndexCreateRequest, background: BackgroundTasks):
 	
 	try:
 		index_id = create_index(payload.name, payload.parser_id)
-		job_id = create_job("index_creation", message=f"Created index '{payload.name}'")
+		job_name = f"Create Index: {payload.name}"
+		job_id = create_job(
+			job_type="index_creation", 
+			job_name=job_name,
+			message=f"Creating index '{payload.name}' with {parser.name}"
+		)
 		
 		def _complete_index_creation():
 			try:

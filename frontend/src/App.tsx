@@ -30,6 +30,7 @@ type JobInfo = {
   started_at?: string
   finished_at?: string
   progress?: number
+  job_name?: string
 }
 
 type Parser = {
@@ -139,18 +140,22 @@ export default function App() {
       })
       
       setFileId(res.data.file_id)
+      // Automatically set document name from filename
+      if (res.data.document_name) {
+        setDocumentName(res.data.document_name)
+      }
       setUploadProgress(100)
       setIngestLogs(prev => [...prev, { 
         ts: new Date().toISOString(), 
         level: 'info', 
-        message: 'File uploaded successfully' 
+        message: `File uploaded successfully: ${res.data.document_name || f.name}` 
       }])
       
       if (res.data.job_id) {
         setIngestLogs(prev => [...prev, { 
           ts: new Date().toISOString(), 
           level: 'info', 
-          message: `Upload job: ${res.data.job_id}` 
+          message: `Upload job started: ${res.data.job_id}` 
         }])
         startPolling(res.data.job_id, setUploadJob)
       }
@@ -409,16 +414,19 @@ ${jsCode}`)
                     />
                   </div>
                   
-                  <div className="text-sm space-y-1">
-                    {uploadJob && (
-                      <div className="flex items-center gap-2">
-                        <span>Upload</span>
-                        <Badge color={uploadJob.status === 'completed' ? 'green' : uploadJob.status === 'failed' ? 'red' : 'blue'}>
-                          {uploadJob.status}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
+                                      <div className="text-sm space-y-1">
+                      {uploadJob && (
+                        <div className="flex items-center gap-2">
+                          <span>{uploadJob.job_name || 'Upload'}</span>
+                          <Badge color={uploadJob.status === 'completed' ? 'green' : uploadJob.status === 'failed' ? 'red' : 'blue'}>
+                            {uploadJob.status}
+                          </Badge>
+                          {uploadJob.message && (
+                            <span className="text-xs text-gray-500">- {uploadJob.message}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   
                   <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 h-48 overflow-auto text-sm">
                     <div className="font-medium mb-2">Parser Logs</div>
@@ -516,7 +524,7 @@ ${jsCode}`)
                           variant={indexingJob.status === 'completed' ? 'success' : indexingJob.status === 'failed' ? 'error' : 'default'}
                         />
                         <div className="flex items-center gap-2 text-sm">
-                          <span>Indexing</span>
+                          <span>{indexingJob.job_name || 'Indexing'}</span>
                           <Badge color={indexingJob.status === 'completed' ? 'green' : indexingJob.status === 'failed' ? 'red' : 'blue'}>
                             {indexingJob.status}
                           </Badge>
@@ -534,6 +542,9 @@ ${jsCode}`)
                             </span>
                           )}
                         </div>
+                        {indexingJob.message && (
+                          <div className="text-xs text-gray-500 mt-1">{indexingJob.message}</div>
+                        )}
                       </div>
                     )}
                   </div>
