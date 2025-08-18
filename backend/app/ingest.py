@@ -1,4 +1,7 @@
+# Disable ChromaDB telemetry globally
 import os
+os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
+
 import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional

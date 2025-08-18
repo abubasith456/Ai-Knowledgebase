@@ -1,4 +1,7 @@
+# Disable ChromaDB telemetry globally
 import os
+os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
+
 from typing import List, Optional
 from loguru import logger
 import chromadb

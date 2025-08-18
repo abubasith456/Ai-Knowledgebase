@@ -1,3 +1,7 @@
+# Disable ChromaDB telemetry globally
+import os
+os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
+
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -53,16 +57,6 @@ app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-	"""Clean up old collections on startup."""
-	try:
-		from .ingest import _cleanup_old_collections
-		_cleanup_old_collections()
-	except Exception as e:
-		logger.warning(f"Failed to cleanup old collections on startup: {e}")
 
 
 @app.get("/health")
