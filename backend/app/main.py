@@ -55,6 +55,16 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+	"""Clean up old collections on startup."""
+	try:
+		from .ingest import _cleanup_old_collections
+		_cleanup_old_collections()
+	except Exception as e:
+		logger.warning(f"Failed to cleanup old collections on startup: {e}")
+
+
 @app.get("/health")
 def health():
 	return {"status": "ok"}
@@ -167,7 +177,11 @@ def query(payload: QueryRequest):
 							)
 							all_contexts.append(context)
 				except Exception as e:
-					logger.warning(f"Failed to query collection {collection.name}: {e}")
+					# Skip collections with dimension mismatches or other issues
+					if "Embedding dimension" in str(e):
+						logger.info(f"Skipping collection {collection.name} due to dimension mismatch (old model)")
+					else:
+						logger.warning(f"Failed to query collection {collection.name}: {e}")
 					continue
 			
 			# Sort by score and take top_k

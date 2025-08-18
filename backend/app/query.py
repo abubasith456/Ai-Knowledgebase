@@ -20,7 +20,13 @@ def _client() -> chromadb.Client:
         from chromadb.config import Settings
         data_dir = Path(os.environ.get("CHROMA_DATA_DIR") or (Path.cwd() / "data" / "chroma"))
         data_dir.mkdir(parents=True, exist_ok=True)
-        return chromadb.PersistentClient(path=str(data_dir))
+        return chromadb.PersistentClient(
+            path=str(data_dir),
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
 
  
 

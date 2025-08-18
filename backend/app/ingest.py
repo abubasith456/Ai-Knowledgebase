@@ -31,6 +31,26 @@ except (OSError, PermissionError):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _cleanup_old_collections():
+	"""Clean up old collections that have incompatible embedding dimensions."""
+	try:
+		client = _client()
+		collections = client.list_collections()
+		
+		for collection in collections:
+			try:
+				# Try to get collection info to check if it's compatible
+				collection.get()
+			except Exception as e:
+				if "Embedding dimension" in str(e):
+					logger.info(f"Deleting incompatible collection: {collection.name}")
+					client.delete_collection(name=collection.name)
+				else:
+					logger.warning(f"Error checking collection {collection.name}: {e}")
+	except Exception as e:
+		logger.warning(f"Failed to cleanup old collections: {e}")
+
+
 def _client() -> chromadb.Client:
 	host = os.environ.get("CHROMA_HOST")
 	if host:
@@ -39,7 +59,16 @@ def _client() -> chromadb.Client:
 		# Local persistent client for non-Docker/local dev
 		from chromadb.config import Settings
 		DATA_DIR.mkdir(parents=True, exist_ok=True)
-		return chromadb.PersistentClient(path=str(DATA_DIR))
+		return chromadb.PersistentClient(
+			path=str(DATA_DIR),
+			settings=Settings(
+				anonymized_telemetry=False,
+				allow_reset=True
+			)
+		)
+
+# Cleanup old collections after client function is defined
+_cleanup_old_collections()
 
 
 def _sanitize_name(name: str) -> str:
