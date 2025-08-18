@@ -12,6 +12,19 @@ type RetrievedContext = {
   metadata: Record<string, any>
 }
 
+type JobInfo = {
+  id: string
+  type: string
+  status: string
+  message?: string
+  file_id?: string
+  document_name?: string
+  num_chunks?: number
+  indexing_status?: string
+  started_at?: string
+  finished_at?: string
+}
+
 export default function App() {
   const [apiKey, setApiKey] = useState<string>(localStorage.getItem('kb_api_key') || '')
   const [uploading, setUploading] = useState<boolean>(false)
@@ -21,6 +34,8 @@ export default function App() {
   const [question, setQuestion] = useState<string>('')
   const [answer, setAnswer] = useState<string>('')
   const [contexts, setContexts] = useState<RetrievedContext[]>([])
+  const [uploadJob, setUploadJob] = useState<JobInfo | null>(null)
+  const [ingestJob, setIngestJob] = useState<JobInfo | null>(null)
 
   const client = useMemo(() => axios.create({ baseURL: BACKEND_URL }), [])
 
@@ -53,6 +68,10 @@ export default function App() {
       })
       setFileId(res.data.file_id)
       setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: 'File uploaded' }])
+      if (res.data.job_id) {
+        setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: `Upload job: ${res.data.job_id}` }])
+        startPolling(res.data.job_id, setUploadJob)
+      }
     } catch (e: any) {
       setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'error', message: `Upload failed: ${e?.message}` }])
     } finally {
@@ -65,7 +84,10 @@ export default function App() {
     setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: 'Starting ingestion...' }])
     try {
       const res = await client.post('/ingest', { file_id: fileId, document_name: documentName }, { headers: { 'x-api-key': apiKey }})
-      setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: `Ingested: ${res.data.num_chunks} chunks` }])
+      if (res.data.job_id) {
+        setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: `Ingest job started: ${res.data.job_id}` }])
+        startPolling(res.data.job_id, setIngestJob)
+      }
     } catch (e: any) {
       setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'error', message: `Ingestion failed: ${e?.message}` }])
     }
@@ -81,6 +103,30 @@ export default function App() {
       setAnswer('Query failed: ' + e?.message)
       setContexts([])
     }
+  }
+
+  async function fetchJob(jobId: string): Promise<JobInfo> {
+    const res = await client.get(`/jobs/${jobId}`, { headers: { 'x-api-key': apiKey } })
+    return res.data as JobInfo
+  }
+
+  function startPolling(jobId: string, setter: (j: JobInfo) => void) {
+    const poll = async () => {
+      try {
+        const info = await fetchJob(jobId)
+        setter(info)
+        if (info.status === 'processing') {
+          setTimeout(poll, 1500)
+        } else if (info.status === 'completed') {
+          setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: `${info.type} completed` }])
+        } else if (info.status === 'failed') {
+          setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'error', message: `${info.type} failed: ${info.message || ''}` }])
+        }
+      } catch (e: any) {
+        setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'error', message: `Job polling error: ${e?.message}` }])
+      }
+    }
+    poll()
   }
 
   return (
@@ -100,6 +146,22 @@ export default function App() {
           <input type="file" accept="application/pdf" onChange={handleUpload} />
           <input className="border rounded px-2 py-1" placeholder="Document Name" value={documentName} onChange={e => setDocumentName(e.target.value)} />
           <button disabled={uploading || !fileId || !documentName} className="bg-green-600 text-white px-3 py-1 rounded disabled:opacity-50" onClick={ingest}>Ingest</button>
+        </div>
+        <div className="text-sm space-y-1">
+          {uploadJob && (
+            <div>Upload status: <span className="font-medium">{uploadJob.status}</span></div>
+          )}
+          {ingestJob && (
+            <div>
+              Ingest status: <span className="font-medium">{ingestJob.status}</span>
+              {ingestJob.indexing_status && (
+                <span> · Indexing: <span className="font-medium">{ingestJob.indexing_status}</span></span>
+              )}
+              {typeof ingestJob.num_chunks === 'number' && ingestJob.status === 'completed' && (
+                <span> · Chunks: <span className="font-medium">{ingestJob.num_chunks}</span></span>
+              )}
+            </div>
+          )}
         </div>
         <div className="bg-gray-100 dark:bg-gray-800 rounded p-3 h-40 overflow-auto text-sm">
           {ingestLogs.map((l, i) => (
@@ -134,4 +196,3 @@ export default function App() {
     </div>
   )
 }
-
