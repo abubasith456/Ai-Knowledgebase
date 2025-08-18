@@ -35,7 +35,9 @@ def validate_api_key(api_key: str) -> bool:
 
 
 def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> str:
+	# Allow bypass in non-prod or local testing
+	if os.environ.get("DISABLE_AUTH", "false").lower() in ("1", "true", "yes"):
+		return x_api_key or "__disabled__"
 	if not x_api_key or not validate_api_key(x_api_key):
 		raise HTTPException(status_code=401, detail="Invalid or missing API key")
 	return x_api_key
-
