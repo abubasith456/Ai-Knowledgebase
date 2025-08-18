@@ -10,18 +10,18 @@ try:
 except ImportError:
     from schemas import Index, Parser
 
-# Simple file-based storage for indices (in production, use a proper database)
-# Use local directory in development, /data/indices in production
+# Simple file-based storage for index (in production, use a proper database)
+# Use local directory in development, /data/index in production
 try:
-    indices_path = os.environ.get("INDICES_DIR", "./data/indices")
-    INDICES_DIR = Path(indices_path)
-    INDICES_DIR.mkdir(parents=True, exist_ok=True)
+    index_path = os.environ.get("INDEX_DIR", "./data/index")
+    INDEX_DIR = Path(index_path)
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
 except (OSError, PermissionError) as e:
     # Fallback to a local directory if we can't create the default path
     import tempfile
-    INDICES_DIR = Path(tempfile.gettempdir()) / "doc_kb_indices"
-    INDICES_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Warning: Using fallback directory for indices: {INDICES_DIR}")
+    INDEX_DIR = Path(tempfile.gettempdir()) / "doc_kb_index"
+    INDEX_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Warning: Using fallback directory for index: {INDEX_DIR}")
 
 # Available parsers
 AVAILABLE_PARSERS = [
@@ -71,7 +71,7 @@ def create_index(name: str, parser_id: str) -> str:
         "parser_id": parser_id
     }
     
-    index_file = INDICES_DIR / f"{index_id}.json"
+    index_file = INDEX_DIR / f"{index_id}.json"
     with open(index_file, 'w') as f:
         json.dump(index_data, f, indent=2)
     
@@ -80,7 +80,7 @@ def create_index(name: str, parser_id: str) -> str:
 
 def get_index(index_id: str) -> Optional[Index]:
     """Get an index by ID."""
-    index_file = INDICES_DIR / f"{index_id}.json"
+    index_file = INDEX_DIR / f"{index_id}.json"
     if not index_file.exists():
         return None
     
@@ -93,24 +93,24 @@ def get_index(index_id: str) -> Optional[Index]:
 
 
 def get_all_indices() -> List[Index]:
-    """Get all indices."""
-    indices = []
-    for index_file in INDICES_DIR.glob("*.json"):
+    """Get all index."""
+    index_list = []
+    for index_file in INDEX_DIR.glob("*.json"):
         try:
             with open(index_file, 'r') as f:
                 data = json.load(f)
-            indices.append(Index(**data))
+            index_list.append(Index(**data))
         except (json.JSONDecodeError, ValueError):
             continue
     
     # Sort by creation date (newest first)
-    indices.sort(key=lambda x: x.created_at, reverse=True)
-    return indices
+    index_list.sort(key=lambda x: x.created_at, reverse=True)
+    return index_list
 
 
 def update_index_document_count(index_id: str, count: int):
     """Update the document count for an index."""
-    index_file = INDICES_DIR / f"{index_id}.json"
+    index_file = INDEX_DIR / f"{index_id}.json"
     if not index_file.exists():
         return
     
@@ -128,7 +128,7 @@ def update_index_document_count(index_id: str, count: int):
 
 def delete_index(index_id: str) -> bool:
     """Delete an index."""
-    index_file = INDICES_DIR / f"{index_id}.json"
+    index_file = INDEX_DIR / f"{index_id}.json"
     if index_file.exists():
         index_file.unlink()
         return True

@@ -13,7 +13,7 @@ services:
       - COLLECTION_PREFIX=kb_
       - LOG_LEVEL=info
       - API_KEY_SECRET=${API_KEY_SECRET}
-      - INDICES_DIR=/data/indices
+      - INDEX_DIR=/data/index
     volumes:
       - backend_data:/data
     depends_on:

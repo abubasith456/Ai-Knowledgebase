@@ -89,9 +89,7 @@ export default function App() {
   const [integrationCode, setIntegrationCode] = useState<string>('')
   const [apiEndpoint, setApiEndpoint] = useState<string>('')
 
-  // API Key management
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('kb_api_key') || '')
-  const [needsApiKey, setNeedsApiKey] = useState<boolean>(!apiKey)
+  // No API key needed anymore
 
   // Theme effect
   useEffect(() => {
@@ -104,46 +102,21 @@ export default function App() {
     }
   }, [isDark])
 
-  // API Key generation
-  async function generateApiKey() {
-    try {
-      const res = await http.post('/auth/generate-key')
-      const newKey = res.data.api_key
-      setApiKey(newKey)
-      localStorage.setItem('kb_api_key', newKey)
-      setNeedsApiKey(false)
-      
-      // Register the key
-      await http.post('/auth/register-key', { api_key: newKey })
-      setIngestLogs(prev => [...prev, { 
-        ts: new Date().toISOString(), 
-        level: 'info', 
-        message: 'API key generated and registered successfully' 
-      }])
-    } catch (e: any) {
-      setIngestLogs(prev => [...prev, { 
-        ts: new Date().toISOString(), 
-        level: 'error', 
-        message: `API key generation failed: ${e?.message}` 
-      }])
-    }
-  }
+  // No API key generation needed
 
-  // Load indices
+  // Load index
   async function loadIndices() {
     try {
-      const res = await http.get('/indices')
+      const res = await http.get('/index')
       setIndices(res.data || [])
     } catch (e: any) {
-      console.error('Failed to load indices:', e)
+      console.error('Failed to load index:', e)
     }
   }
 
   useEffect(() => {
-    if (!needsApiKey) {
-      loadIndices()
-    }
-  }, [needsApiKey])
+    loadIndices()
+  }, [])
 
   // Upload functionality
   async function doUpload(f: File) {
@@ -198,7 +171,7 @@ export default function App() {
     
     setIndexingProgress(0)
     try {
-      const res = await http.post('/indices', { 
+      const res = await http.post('/index', { 
         name: indexName, 
         parser_id: selectedParserForIndex 
       })
@@ -212,7 +185,7 @@ export default function App() {
         startPolling(res.data.job_id, setIndexingJob)
       }
       
-      // Refresh indices list
+      // Refresh index list
       loadIndices()
     } catch (e: any) {
       setIngestLogs(prev => [...prev, { 
@@ -285,7 +258,6 @@ export default function App() {
     
     const curlCode = `curl -X POST "${backendUrl}/query" \\
   -H "Content-Type: application/json" \\
-  -H "x-api-key: ${apiKey}" \\
   -d '{
     "question": "${question}",
     "top_k": 5,
@@ -296,8 +268,7 @@ export default function App() {
 
 url = "${backendUrl}/query"
 headers = {
-    "Content-Type": "application/json",
-    "x-api-key": "${apiKey}"
+    "Content-Type": "application/json"
 }
 data = {
     "question": "${question}",
@@ -311,8 +282,7 @@ result = response.json()`
     const jsCode = `const response = await fetch('${backendUrl}/query', {
   method: 'POST',
   headers: {
-    'Content-Type': 'application/json',
-    'x-api-key': '${apiKey}'
+    'Content-Type': 'application/json'
   },
   body: JSON.stringify({
     question: '${question}',
@@ -382,28 +352,7 @@ ${jsCode}`)
     poll()
   }
 
-  if (needsApiKey) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-center">Welcome to Doc KB</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center space-y-4">
-            <p className="text-gray-600 dark:text-gray-400">
-              You need an API key to use this application. Click below to generate one.
-            </p>
-            <Button onClick={generateApiKey} className="w-full">
-              Generate API Key
-            </Button>
-            <div className="absolute top-4 right-4">
-              <ThemeToggle isDark={isDark} onToggle={() => setIsDark(!isDark)} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
@@ -421,7 +370,7 @@ ${jsCode}`)
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="parser">Parser</TabsTrigger>
-            <TabsTrigger value="indexing">Indexing</TabsTrigger>
+            <TabsTrigger value="indexing">Index</TabsTrigger>
             <TabsTrigger value="query">Query & Test</TabsTrigger>
           </TabsList>
 
@@ -593,12 +542,12 @@ ${jsCode}`)
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Existing Indices</CardTitle>
+                  <CardTitle>Existing Index</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {indices.length === 0 ? (
                     <div className="text-gray-500 dark:text-gray-400 text-center py-8">
-                      No indices created yet. Create your first index above.
+                      No index created yet. Create your first index above.
                     </div>
                   ) : (
                     <div className="grid gap-4">
@@ -701,7 +650,7 @@ ${jsCode}`)
                       </div>
                       
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        <p><strong>Note:</strong> Replace the API key and adjust parameters as needed for your integration.</p>
+                        <p><strong>Note:</strong> Adjust parameters as needed for your integration.</p>
                       </div>
                     </div>
                   </CardContent>

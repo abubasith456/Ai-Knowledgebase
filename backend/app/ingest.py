@@ -48,24 +48,24 @@ def _sanitize_name(name: str) -> str:
 	return name[:63]
 
 
-def _collection_name(x_api_key: str, document_name: str, index_id: Optional[str] = None) -> str:
+def _collection_name(document_name: str, index_id: Optional[str] = None) -> str:
 	prefix = os.environ.get("COLLECTION_PREFIX", "kb_")
-	user_key = str(abs(hash(x_api_key)))[:10]
 	
 	if index_id:
 		# Use index-based collection name
-		base = f"{prefix}{user_key}_index_{index_id}"
+		base = f"{prefix}index_{index_id}"
 	else:
 		# Use document-based collection name (legacy)
 		doc_part = _sanitize_name(document_name)
-		base = f"{prefix}{user_key}_{doc_part}"
+		base = f"{prefix}{doc_part}"
 	
 	return _sanitize_name(base)
 
 
-def save_upload_temp(file: UploadFile, x_api_key: str) -> Tuple[str, str]:
+def save_upload_temp(file: UploadFile) -> Tuple[str, str]:
 	file_id = str(uuid.uuid4())
-	user_dir = UPLOAD_DIR / (str(abs(hash(x_api_key)))[:8])
+	# Use default user directory since no authentication
+	user_dir = UPLOAD_DIR / "default_user"
 	user_dir.mkdir(parents=True, exist_ok=True)
 	path = user_dir / f"{file_id}_{file.filename}"
 	with path.open("wb") as f:
@@ -75,9 +75,9 @@ def save_upload_temp(file: UploadFile, x_api_key: str) -> Tuple[str, str]:
 	return file_id, str(path)
 
 
-def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: Dict[str, Any], index_id: Optional[str] = None) -> IngestResponse:
+def ingest_document(file_id: str, document_name: str, metadata: Dict[str, Any], index_id: Optional[str] = None) -> IngestResponse:
 	# Locate file by pattern
-	user_dir = UPLOAD_DIR / (str(abs(hash(x_api_key)))[:8])
+	user_dir = UPLOAD_DIR / "default_user"
 	matches = list(user_dir.glob(f"{file_id}_*"))
 	if not matches:
 		raise FileNotFoundError("Uploaded file not found")
@@ -99,7 +99,7 @@ def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: 
 	# Embed
 	logger.info("Embedding chunks and upserting into Chroma")
 	client = _client()
-	collection = client.get_or_create_collection(name=_collection_name(x_api_key, document_name, index_id))
+	collection = client.get_or_create_collection(name=_collection_name(document_name, index_id))
 	embedder = get_embedding_function()
 	texts = [c.text for c in chunks]
 	embs = embedder(texts)
@@ -110,7 +110,7 @@ def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: 
 	# Update index document count if using an index
 	if index_id:
 		try:
-			from .indices import update_index_document_count, get_index
+			from .index import update_index_document_count, get_index
 			index = get_index(index_id)
 			if index:
 				# Get current document count from ChromaDB collection

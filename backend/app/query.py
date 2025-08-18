@@ -30,19 +30,18 @@ def _synthesize_answer(question: str, contexts: List[str]) -> str:
     return header + body
 
 
-def query_knowledgebase(x_api_key: str, question: str, top_k: int = 5, index_id: Optional[str] = None) -> QueryResponse:
+def query_knowledgebase(question: str, top_k: int = 5, index_id: Optional[str] = None) -> QueryResponse:
     client = _client()
-    user_key = str(abs(hash(x_api_key)))[:10]
-    user_prefix = os.environ.get("COLLECTION_PREFIX", "kb_") + user_key + "_"
+    prefix = os.environ.get("COLLECTION_PREFIX", "kb_")
     collections = client.list_collections()
     
     if index_id:
         # Query specific index
-        index_collection_name = f"{user_prefix}index_{index_id}"
+        index_collection_name = f"{prefix}index_{index_id}"
         user_collections = [c for c in collections if getattr(c, 'name', '') == index_collection_name]
     else:
-        # Query all user collections (legacy behavior)
-        user_collections = [c for c in collections if getattr(c, 'name', '').startswith(user_prefix)]
+        # Query all collections (legacy behavior)
+        user_collections = [c for c in collections if getattr(c, 'name', '').startswith(prefix)]
 
     if not user_collections:
         return QueryResponse(answer="No documents ingested yet." + (f" Index '{index_id}' not found." if index_id else ""), contexts=[])

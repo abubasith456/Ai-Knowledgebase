@@ -13,7 +13,7 @@ def setup_dev_environment():
     
     # Create necessary directories
     directories = [
-        "./data/indices",
+        "./data/index",
         "./data/uploads", 
         "./data/chroma"
     ]
@@ -23,9 +23,8 @@ def setup_dev_environment():
         print(f"✓ Created directory: {dir_path}")
     
     # Set environment variables for development
-    os.environ.setdefault("INDICES_DIR", "./data/indices")
+    os.environ.setdefault("INDEX_DIR", "./data/index")
     os.environ.setdefault("CHROMA_DATA_DIR", "./data/chroma")
-    os.environ.setdefault("API_KEY_SECRET", "dev-secret-key-change-in-production")
     os.environ.setdefault("MODEL_NAME", "jinaai/jina-embeddings-v3-small")
     os.environ.setdefault("COLLECTION_PREFIX", "kb_")
     os.environ.setdefault("LOG_LEVEL", "info")
