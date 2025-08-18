@@ -12,7 +12,15 @@ except ImportError:
 
 
 def _client() -> chromadb.Client:
-    return chromadb.HttpClient(host=os.environ.get("CHROMA_HOST", "chroma"), port=int(os.environ.get("CHROMA_PORT", "8000")))
+    host = os.environ.get("CHROMA_HOST")
+    if host:
+        return chromadb.HttpClient(host=host, port=int(os.environ.get("CHROMA_PORT", "8000")))
+    else:
+        from pathlib import Path
+        from chromadb.config import Settings
+        data_dir = Path(os.environ.get("CHROMA_DATA_DIR") or (Path.cwd() / "data" / "chroma"))
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return chromadb.PersistentClient(path=str(data_dir))
 
  
 

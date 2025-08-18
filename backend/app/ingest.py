@@ -19,13 +19,20 @@ except ImportError:
 	from embeddings import get_embedding_function
 
 
-DATA_DIR = Path(os.environ.get("CHROMA_DATA_DIR", "/data/chroma"))
+DATA_DIR = Path(os.environ.get("CHROMA_DATA_DIR") or (Path.cwd() / "data" / "chroma"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _client() -> chromadb.Client:
-	return chromadb.HttpClient(host=os.environ.get("CHROMA_HOST", "chroma"), port=int(os.environ.get("CHROMA_PORT", "8000")))
+	host = os.environ.get("CHROMA_HOST")
+	if host:
+		return chromadb.HttpClient(host=host, port=int(os.environ.get("CHROMA_PORT", "8000")))
+	else:
+		# Local persistent client for non-Docker/local dev
+		from chromadb.config import Settings
+		DATA_DIR.mkdir(parents=True, exist_ok=True)
+		return chromadb.PersistentClient(path=str(DATA_DIR))
 
 
 def _collection_name(x_api_key: str, document_name: str) -> str:
