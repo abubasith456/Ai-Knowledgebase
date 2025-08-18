@@ -30,7 +30,7 @@ except ImportError:
     from query import query_knowledgebase
 
 from fastapi import BackgroundTasks
-from .jobs import create_job, complete_job, fail_job, get_job
+from .jobs import create_job, complete_job, fail_job, get_job, set_indexing_status
 
 app = FastAPI(title="Doc KB", version="1.0.0")
 
@@ -85,6 +85,7 @@ def ingest(payload: IngestRequest, background: BackgroundTasks, x_api_key: str =
 
 	def _run_ingest():
 		try:
+			set_indexing_status(job_id, "processing")
 			result = ingest_document(
 				x_api_key=x_api_key,
 				file_id=payload.file_id,
@@ -119,4 +120,3 @@ def job_status(job_id: str, x_api_key: str = Depends(require_api_key)):
 	if not info:
 		raise HTTPException(status_code=404, detail="Job not found")
 	return info
-

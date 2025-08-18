@@ -62,6 +62,7 @@ class JobInfo(BaseModel):
 	file_id: Optional[str] = None
 	document_name: Optional[str] = None
 	num_chunks: Optional[int] = None
+	indexing_status: Optional[str] = None  # 'pending' | 'processing' | 'completed' | 'failed'
 	started_at: Optional[str] = None
 	finished_at: Optional[str] = None
 

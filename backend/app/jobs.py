@@ -14,6 +14,7 @@ class Job:
 	file_id: Optional[str]
 	document_name: Optional[str]
 	num_chunks: Optional[int]
+	indexing_status: Optional[str]
 	started_at: str
 	finished_at: Optional[str]
 
@@ -36,6 +37,7 @@ def create_job(job_type: str, file_id: Optional[str] = None, document_name: Opti
 		file_id=file_id,
 		document_name=document_name,
 		num_chunks=None,
+		indexing_status="pending" if job_type == "ingest" else None,
 		started_at=_now(),
 		finished_at=None,
 	)
@@ -52,6 +54,8 @@ def complete_job(job_id: str, message: Optional[str] = None, num_chunks: Optiona
 		job.status = "completed"
 		job.message = message
 		job.num_chunks = num_chunks
+		if job.type == "ingest":
+			job.indexing_status = "completed"
 		job.finished_at = _now()
 
 
@@ -62,7 +66,17 @@ def fail_job(job_id: str, message: str):
 			return
 		job.status = "failed"
 		job.message = message
+		if job.type == "ingest":
+			job.indexing_status = "failed"
 		job.finished_at = _now()
+
+
+def set_indexing_status(job_id: str, status: str):
+	with _lock:
+		job = _jobs.get(job_id)
+		if not job:
+			return
+		job.indexing_status = status
 
 
 def get_job(job_id: str) -> Optional[Dict[str, Any]]:
