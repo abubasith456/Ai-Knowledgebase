@@ -71,6 +71,7 @@ export default function App() {
   const [documentName, setDocumentName] = useState<string>('')
   const [uploadJob, setUploadJob] = useState<JobInfo | null>(null)
   const [processingJob, setProcessingJob] = useState<JobInfo | null>(null)
+  const [isProcessing, setIsProcessing] = useState<boolean>(false)
   
   // Chunking settings
   const [chunkMode, setChunkMode] = useState<ChunkMode>('auto')
@@ -84,6 +85,7 @@ export default function App() {
   const [topK, setTopK] = useState<number>(5)
   const [integrationCode, setIntegrationCode] = useState<string>('')
   const [apiEndpoint, setApiEndpoint] = useState<string>('')
+  const [isQuerying, setIsQuerying] = useState<boolean>(false)
 
   // Theme effect
   useEffect(() => {
@@ -150,6 +152,7 @@ export default function App() {
   async function processDocument() {
     if (!fileId || !documentName) return
     
+    setIsProcessing(true)
     setIngestLogs(prev => [...prev, { 
       ts: new Date().toISOString(), 
       level: 'info', 
@@ -184,12 +187,14 @@ export default function App() {
         level: 'error', 
         message: `Processing failed: ${e?.message}` 
       }])
+      setIsProcessing(false)
     }
   }
 
   // Query functionality
   async function ask() {
     if (!question) return
+    setIsQuerying(true)
     try {
       const res = await http.post('/query', { 
         question, 
@@ -203,6 +208,8 @@ export default function App() {
     } catch (e: any) {
       setAnswer('Query failed: ' + e?.message)
       setContexts([])
+    } finally {
+      setIsQuerying(false)
     }
   }
 
@@ -276,6 +283,7 @@ ${jsCode}`)
             message: `${info.type} completed successfully` 
           }])
           if (setter === setProcessingJob) {
+            setIsProcessing(false)
             // Switch to query tab
             setActiveTab('query')
           }
@@ -285,6 +293,9 @@ ${jsCode}`)
             level: 'error', 
             message: `${info.type} failed: ${info.message || ''}` 
           }])
+          if (setter === setProcessingJob) {
+            setIsProcessing(false)
+          }
         }
       } catch (e: any) {
         setIngestLogs(prev => [...prev, { 
@@ -366,6 +377,7 @@ ${jsCode}`)
                           placeholder="Document name (auto-filled from filename)"
                           value={documentName}
                           onChange={e => setDocumentName(e.target.value)}
+                          disabled={isProcessing}
                         />
                       </div>
 
@@ -379,6 +391,7 @@ ${jsCode}`)
                               checked={chunkMode === 'auto'}
                               onChange={(e) => setChunkMode(e.target.value as ChunkMode)}
                               className="mr-2"
+                              disabled={isProcessing}
                             />
                             <span>Auto - Optimized hybrid chunking (recommended)</span>
                           </label>
@@ -389,6 +402,7 @@ ${jsCode}`)
                               checked={chunkMode === 'manual'}
                               onChange={(e) => setChunkMode(e.target.value as ChunkMode)}
                               className="mr-2"
+                              disabled={isProcessing}
                             />
                             <span>Manual - Custom chunk size and overlap</span>
                           </label>
@@ -406,6 +420,7 @@ ${jsCode}`)
                               value={chunkSize}
                               onChange={(e) => setChunkSize(parseInt(e.target.value) || 1000)}
                               className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                              disabled={isProcessing}
                             />
                           </div>
                           <div>
@@ -417,6 +432,7 @@ ${jsCode}`)
                               value={chunkOverlap}
                               onChange={(e) => setChunkOverlap(parseInt(e.target.value) || 200)}
                               className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                              disabled={isProcessing}
                             />
                           </div>
                         </div>
@@ -424,10 +440,20 @@ ${jsCode}`)
 
                       <Button 
                         onClick={processDocument}
-                        disabled={!fileId || !documentName}
+                        disabled={!fileId || !documentName || isProcessing}
                         className="w-full"
                       >
-                        Process Document
+                        {isProcessing ? (
+                          <div className="flex items-center justify-center">
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="ml-2">Processing...</span>
+                          </div>
+                        ) : (
+                          "Process Document"
+                        )}
                       </Button>
 
                       {processingJob && (
@@ -508,6 +534,7 @@ ${jsCode}`)
                         value={question}
                         onChange={e => setQuestion(e.target.value)}
                         onKeyPress={e => e.key === 'Enter' && ask()}
+                        disabled={isQuerying}
                       />
                       <input
                         type="number"
@@ -518,7 +545,19 @@ ${jsCode}`)
                         className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-20"
                         title="Number of top results to retrieve"
                       />
-                      <Button onClick={ask} disabled={!question}>Ask</Button>
+                      <Button onClick={ask} disabled={!question || isQuerying}>
+                        {isQuerying ? (
+                          <div className="flex items-center justify-center">
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="ml-2">Querying...</span>
+                          </div>
+                        ) : (
+                          "Ask"
+                        )}
+                      </Button>
                     </div>
                     
                     {answer && (

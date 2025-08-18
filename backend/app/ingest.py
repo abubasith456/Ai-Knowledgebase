@@ -104,7 +104,7 @@ def ingest_document(
 			from .index import create_index, get_all_indices
 			# Create index name from document name
 			index_name = f"Index_{document_name.replace('.', '_').replace(' ', '_')}"
-			index_id = create_index(index_name, "docling_ocr")
+			index_id = create_index(index_name, "advanced")  # Use "advanced" parser instead of "docling_ocr"
 			logger.info(f"Auto-created index: {index_name} with ID: {index_id}")
 		except Exception as e:
 			logger.warning(f"Failed to auto-create index: {e}")
