@@ -1,5 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
+from enum import Enum
+
+
+class ChunkMode(str, Enum):
+    AUTO = "auto"
+    MANUAL = "manual"
 
 
 class APIKeyResponse(BaseModel):
@@ -19,6 +25,9 @@ class IngestRequest(BaseModel):
 	document_name: str
 	metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
 	index_id: Optional[str] = None
+	chunk_mode: ChunkMode = ChunkMode.AUTO
+	chunk_size: Optional[int] = None
+	chunk_overlap: Optional[int] = None
 
 
 class Chunk(BaseModel):
@@ -37,7 +46,7 @@ class IngestResponse(BaseModel):
 class QueryRequest(BaseModel):
 	question: str
 	top_k: Optional[int] = 5
-	index_id: Optional[str] = None
+	job_id: Optional[str] = None  # Job ID to query specific document collection
 
 
 class RetrievedContext(BaseModel):
@@ -93,4 +102,12 @@ class IndexCreateRequest(BaseModel):
 class IndexCreateResponse(BaseModel):
 	index_id: str
 	job_id: Optional[str] = None
+
+
+class DocumentInfo(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    num_chunks: int
+    index_id: str
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import tiktoken
 from loguru import logger
 from .schemas import Chunk
@@ -19,7 +19,12 @@ def count_tokens(text: str) -> int:
     return len(enc.encode(text))
 
 
-def hybrid_chunk_document(pages_text: List[str], max_tokens: int, overlap_tokens: int, metadata: Dict[str, Any]) -> List[Chunk]:
+def hybrid_chunk_document(
+    pages_text: List[str],
+    metadata: Dict[str, Any],
+    max_tokens: Optional[int] = None,
+    overlap_tokens: Optional[int] = None,
+) -> List[Chunk]:
     """Hybrid structural + semantic chunking.
 
     Strategy:
@@ -27,6 +32,12 @@ def hybrid_chunk_document(pages_text: List[str], max_tokens: int, overlap_tokens
     - Second pass: enforce max_tokens per chunk; if a chunk exceeds limit, split by paragraphs/sentences.
     - Apply sliding-window overlap between consecutive chunks.
     """
+    
+    # Default values for auto mode
+    if max_tokens is None:
+        max_tokens = 1000  # Default chunk size
+    if overlap_tokens is None:
+        overlap_tokens = 200  # Default overlap
 
     enc = _tokenizer()
     raw_sections: List[str] = []
@@ -126,7 +137,7 @@ def hybrid_chunk_document(pages_text: List[str], max_tokens: int, overlap_tokens
             current_tokens += sec_tokens
 
     flush_current(current_texts)
-    logger.info(f"Chunked into {len(chunks)} chunks")
+    logger.info(f"Chunked into {len(chunks)} chunks with max_tokens={max_tokens}, overlap_tokens={overlap_tokens}")
     return chunks
 
 

@@ -5,7 +5,7 @@ from loguru import logger
 from sentence_transformers import SentenceTransformer
 
 
-_MODEL_NAME = os.environ.get("MODEL_NAME", "jinaai/jina-embeddings-v3-small")
+_MODEL_NAME = os.environ.get("MODEL_NAME", "jinaai/jina-embeddings-v3")
 _model: SentenceTransformer | None = None
 
 
