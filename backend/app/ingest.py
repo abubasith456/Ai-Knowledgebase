@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 
 from fastapi import UploadFile
 from loguru import logger
@@ -48,11 +48,18 @@ def _sanitize_name(name: str) -> str:
 	return name[:63]
 
 
-def _collection_name(x_api_key: str, document_name: str) -> str:
+def _collection_name(x_api_key: str, document_name: str, index_id: Optional[str] = None) -> str:
 	prefix = os.environ.get("COLLECTION_PREFIX", "kb_")
 	user_key = str(abs(hash(x_api_key)))[:10]
-	doc_part = _sanitize_name(document_name)
-	base = f"{prefix}{user_key}_{doc_part}"
+	
+	if index_id:
+		# Use index-based collection name
+		base = f"{prefix}{user_key}_index_{index_id}"
+	else:
+		# Use document-based collection name (legacy)
+		doc_part = _sanitize_name(document_name)
+		base = f"{prefix}{user_key}_{doc_part}"
+	
 	return _sanitize_name(base)
 
 
@@ -92,12 +99,29 @@ def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: 
 	# Embed
 	logger.info("Embedding chunks and upserting into Chroma")
 	client = _client()
-	collection = client.get_or_create_collection(name=_collection_name(x_api_key, document_name))
+	collection = client.get_or_create_collection(name=_collection_name(x_api_key, document_name, index_id))
 	embedder = get_embedding_function()
 	texts = [c.text for c in chunks]
 	embs = embedder(texts)
 	ids = [c.id for c in chunks]
 	metas = [c.metadata for c in chunks]
 	collection.upsert(ids=ids, embeddings=embs, documents=texts, metadatas=metas)
+
+	# Update index document count if using an index
+	if index_id:
+		try:
+			from .indices import update_index_document_count, get_index
+			index = get_index(index_id)
+			if index:
+				# Get current document count from ChromaDB collection
+				collection_info = collection.get()
+				unique_docs = set()
+				if collection_info.get('metadatas'):
+					for meta in collection_info['metadatas']:
+						if isinstance(meta, dict) and 'document_name' in meta:
+							unique_docs.add(meta['document_name'])
+				update_index_document_count(index_id, len(unique_docs))
+		except Exception as e:
+			logger.warning(f"Failed to update index document count: {e}")
 
 	return IngestResponse(document_name=document_name, num_chunks=len(ids), chunk_ids=ids)

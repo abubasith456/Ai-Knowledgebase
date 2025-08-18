@@ -11,8 +11,17 @@ except ImportError:
     from schemas import Index, Parser
 
 # Simple file-based storage for indices (in production, use a proper database)
-INDICES_DIR = Path("/data/indices")
-INDICES_DIR.mkdir(parents=True, exist_ok=True)
+# Use local directory in development, /data/indices in production
+try:
+    indices_path = os.environ.get("INDICES_DIR", "./data/indices")
+    INDICES_DIR = Path(indices_path)
+    INDICES_DIR.mkdir(parents=True, exist_ok=True)
+except (OSError, PermissionError) as e:
+    # Fallback to a local directory if we can't create the default path
+    import tempfile
+    INDICES_DIR = Path(tempfile.gettempdir()) / "doc_kb_indices"
+    INDICES_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Warning: Using fallback directory for indices: {INDICES_DIR}")
 
 # Available parsers
 AVAILABLE_PARSERS = [

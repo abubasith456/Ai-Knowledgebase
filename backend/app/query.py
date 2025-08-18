@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 from loguru import logger
 import chromadb
 
@@ -35,10 +35,17 @@ def query_knowledgebase(x_api_key: str, question: str, top_k: int = 5, index_id:
     user_key = str(abs(hash(x_api_key)))[:10]
     user_prefix = os.environ.get("COLLECTION_PREFIX", "kb_") + user_key + "_"
     collections = client.list_collections()
-    user_collections = [c for c in collections if getattr(c, 'name', '').startswith(user_prefix)]
+    
+    if index_id:
+        # Query specific index
+        index_collection_name = f"{user_prefix}index_{index_id}"
+        user_collections = [c for c in collections if getattr(c, 'name', '') == index_collection_name]
+    else:
+        # Query all user collections (legacy behavior)
+        user_collections = [c for c in collections if getattr(c, 'name', '').startswith(user_prefix)]
 
     if not user_collections:
-        return QueryResponse(answer="No documents ingested yet.", contexts=[])
+        return QueryResponse(answer="No documents ingested yet." + (f" Index '{index_id}' not found." if index_id else ""), contexts=[])
 
     embedder = get_embedding_function()
     q_emb = embedder([question])[0]
