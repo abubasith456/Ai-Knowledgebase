@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import axios from 'axios'
+import { http } from './lib/http'
+import { Button } from './components/Button'
+import { Card, CardContent, CardHeader, CardTitle } from './components/Card'
+import { Badge } from './components/Badge'
+import { ProgressBar } from './components/ProgressBar'
+import { UploadArea } from './components/UploadArea'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -37,31 +42,20 @@ export default function App() {
   const [uploadJob, setUploadJob] = useState<JobInfo | null>(null)
   const [ingestJob, setIngestJob] = useState<JobInfo | null>(null)
 
-  const client = useMemo(() => axios.create({ baseURL: BACKEND_URL }), [])
+  const client = http
 
   useEffect(() => {
     if (apiKey) localStorage.setItem('kb_api_key', apiKey)
   }, [apiKey])
 
-  async function generateKey() {
-    const res = await client.post('/auth/generate')
-    setApiKey(res.data.api_key)
-  }
+  // API key is expected to be provided via env or localStorage; no UI controls
 
-  async function registerKey() {
-    if (!apiKey) return
-    await client.post('/auth/register', { api_key: apiKey })
-  }
-
-  async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
-    const f = ev.target.files?.[0]
-    if (!f) return
+  async function doUpload(f: File) {
     setUploading(true)
     try {
       const form = new FormData()
       form.append('file', f)
       const res = await client.post('/upload', form, {
-        headers: { 'x-api-key': apiKey },
         onUploadProgress: p => {
           setIngestLogs(prev => [...prev, { ts: new Date().toISOString(), level: 'info', message: `Uploaded ${Math.round((p.progress || 0)*100)}%` }])
         }
@@ -134,64 +128,73 @@ export default function App() {
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Doc KB</h1>
         <div className="flex gap-2 items-center">
-          <input className="border rounded px-2 py-1 w-80" placeholder="API Key" value={apiKey} onChange={e => setApiKey(e.target.value)} />
-          <button className="bg-gray-200 px-3 py-1 rounded" onClick={generateKey}>Generate</button>
-          <button className="bg-blue-600 text-white px-3 py-1 rounded" onClick={registerKey}>Register</button>
+          {/* API key controls removed for production UI */}
         </div>
       </header>
 
       <section className="space-y-3">
-        <h2 className="font-semibold">Upload & Ingest</h2>
-        <div className="flex gap-3 items-center">
-          <input type="file" accept="application/pdf" onChange={handleUpload} />
-          <input className="border rounded px-2 py-1" placeholder="Document Name" value={documentName} onChange={e => setDocumentName(e.target.value)} />
-          <button disabled={uploading || !fileId || !documentName} className="bg-green-600 text-white px-3 py-1 rounded disabled:opacity-50" onClick={ingest}>Ingest</button>
-        </div>
-        <div className="text-sm space-y-1">
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload & Ingest</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <UploadArea onFile={doUpload} disabled={uploading} />
+            <div className="flex gap-3 items-center">
+              <input className="border rounded px-2 py-2 flex-1" placeholder="Document Name" value={documentName} onChange={e => setDocumentName(e.target.value)} />
+              <Button disabled={uploading || !fileId || !documentName} onClick={ingest}>Start Ingest</Button>
+            </div>
+            <div className="text-sm space-y-1">
           {uploadJob && (
-            <div>Upload status: <span className="font-medium">{uploadJob.status}</span></div>
+            <div>Upload <Badge color={uploadJob.status === 'completed' ? 'green' : uploadJob.status === 'failed' ? 'red' : 'blue'}>{uploadJob.status}</Badge></div>
           )}
           {ingestJob && (
             <div>
-              Ingest status: <span className="font-medium">{ingestJob.status}</span>
+              Ingest <Badge color={ingestJob.status === 'completed' ? 'green' : ingestJob.status === 'failed' ? 'red' : 'blue'}>{ingestJob.status}</Badge>
               {ingestJob.indexing_status && (
-                <span> · Indexing: <span className="font-medium">{ingestJob.indexing_status}</span></span>
+                <span> · Indexing <Badge color={ingestJob.indexing_status === 'completed' ? 'green' : ingestJob.indexing_status === 'failed' ? 'red' : 'yellow'}>{ingestJob.indexing_status}</Badge></span>
               )}
               {typeof ingestJob.num_chunks === 'number' && ingestJob.status === 'completed' && (
                 <span> · Chunks: <span className="font-medium">{ingestJob.num_chunks}</span></span>
               )}
             </div>
           )}
-        </div>
-        <div className="bg-gray-100 dark:bg-gray-800 rounded p-3 h-40 overflow-auto text-sm">
+            <div className="bg-gray-100 dark:bg-gray-800 rounded p-3 h-40 overflow-auto text-sm">
           {ingestLogs.map((l, i) => (
             <div key={i} className={l.level === 'error' ? 'text-red-600' : ''}>[{l.ts}] {l.message}</div>
           ))}
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-semibold">Ask</h2>
-        <div className="flex gap-3">
-          <input className="border rounded px-2 py-1 flex-1" placeholder="Your question" value={question} onChange={e => setQuestion(e.target.value)} />
-          <button className="bg-indigo-600 text-white px-3 py-1 rounded" onClick={ask}>Ask</button>
-        </div>
-        {answer && (
-          <div className="space-y-2">
-            <div className="font-semibold">Answer</div>
-            <div className="bg-white dark:bg-gray-900 border rounded p-3 whitespace-pre-wrap">{answer}</div>
-            <div className="font-semibold">Contexts</div>
-            <div className="grid md:grid-cols-2 gap-3">
-              {contexts.map((c) => (
-                <div key={c.chunk_id} className="bg-white dark:bg-gray-900 border rounded p-3">
-                  <div className="text-xs text-gray-500">score: {c.score.toFixed(4)}</div>
-                  <div className="text-xs text-gray-500">{JSON.stringify(c.metadata)}</div>
-                  <div className="mt-2 text-sm whitespace-pre-wrap">{c.text}</div>
-                </div>
-              ))}
+        <Card>
+          <CardHeader>
+            <CardTitle>Ask the Knowledge Base</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-3">
+              <input className="border rounded px-3 py-2 flex-1" placeholder="Your question" value={question} onChange={e => setQuestion(e.target.value)} />
+              <Button onClick={ask}>Ask</Button>
             </div>
-          </div>
-        )}
+            {answer && (
+              <div className="space-y-2">
+                <div className="font-semibold">Answer</div>
+                <div className="bg-white dark:bg-gray-900 border rounded p-3 whitespace-pre-wrap">{answer}</div>
+                <div className="font-semibold">Contexts</div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {contexts.map((c) => (
+                    <div key={c.chunk_id} className="bg-white dark:bg-gray-900 border rounded p-3">
+                      <div className="text-xs text-gray-500">score: {c.score.toFixed(4)}</div>
+                      <div className="text-xs text-gray-500">{JSON.stringify(c.metadata)}</div>
+                      <div className="mt-2 text-sm whitespace-pre-wrap">{c.text}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </section>
     </div>
   )
