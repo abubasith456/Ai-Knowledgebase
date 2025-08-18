@@ -20,10 +20,10 @@ def count_tokens(text: str) -> int:
 
 
 def hybrid_chunk_document(
-    pages_text: List[str], 
-    max_tokens: Optional[int] = None, 
-    overlap_tokens: Optional[int] = None, 
-    metadata: Dict[str, Any]
+    pages_text: List[str],
+    metadata: Dict[str, Any],
+    max_tokens: Optional[int] = None,
+    overlap_tokens: Optional[int] = None,
 ) -> List[Chunk]:
     """Hybrid structural + semantic chunking.
 
