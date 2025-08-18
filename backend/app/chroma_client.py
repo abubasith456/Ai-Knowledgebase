@@ -1,6 +1,6 @@
 """
-ChromaDB client wrapper with aggressive telemetry bypass for version 0.5.5.
-Completely disables ChromaDB's internal telemetry system.
+ChromaDB client wrapper with complete telemetry disable for version 0.5.5.
+Aggressively prevents ChromaDB from loading its telemetry system.
 """
 
 import os
@@ -9,16 +9,17 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-# Set all possible telemetry environment variables
+# Set all possible telemetry environment variables BEFORE any imports
 os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_SERVER_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_CLIENT_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_DISABLE_TELEMETRY"] = "TRUE"
+os.environ["CHROMA_TELEMETRY_ENABLED"] = "FALSE"
 
 # Create a complete telemetry bypass
-class TelemetryBypass:
-    """Complete telemetry bypass for ChromaDB 0.5.5."""
+class CompleteTelemetryBypass:
+    """Complete telemetry bypass that handles all possible telemetry calls."""
     
     def __init__(self, *args, **kwargs):
         pass
@@ -31,15 +32,28 @@ class TelemetryBypass:
         """Handle any other telemetry methods."""
         return lambda *args, **kwargs: None
 
-# Aggressive module patching before importing chromadb
-def disable_chromadb_telemetry():
+# Create a mock telemetry module that completely bypasses telemetry
+def create_mock_telemetry_module():
+    """Create a complete mock telemetry module."""
+    mock_module = type(sys)('chromadb.telemetry')
+    
+    # Add all possible telemetry classes and functions
+    mock_module.TelemetryClient = CompleteTelemetryBypass
+    mock_module.telemetry_client = CompleteTelemetryBypass()
+    mock_module.Telemetry = CompleteTelemetryBypass
+    mock_module.telemetry = CompleteTelemetryBypass()
+    
+    # Add any other telemetry-related attributes
+    mock_module.__all__ = ['TelemetryClient', 'telemetry_client', 'Telemetry', 'telemetry']
+    
+    return mock_module
+
+# Aggressive module patching - patch BEFORE any ChromaDB imports
+def disable_chromadb_telemetry_completely():
     """Completely disable ChromaDB telemetry at the module level."""
     
-    # Create a mock telemetry module
-    mock_telemetry = type(sys)('chromadb.telemetry')
-    mock_telemetry.TelemetryClient = TelemetryBypass
-    mock_telemetry.telemetry_client = TelemetryBypass()
-    mock_telemetry.Telemetry = TelemetryBypass
+    # Create mock telemetry module
+    mock_telemetry = create_mock_telemetry_module()
     
     # Patch all possible telemetry module paths
     telemetry_modules = [
@@ -49,16 +63,26 @@ def disable_chromadb_telemetry():
         'chromadb.telemetry.events',
         'chromadb.telemetry.telemetry_client',
         'chromadb.telemetry.telemetry_client',
+        'chromadb.telemetry.telemetry_client',
     ]
     
+    # Patch each module
     for module_name in telemetry_modules:
         try:
             sys.modules[module_name] = mock_telemetry
         except:
             pass
+    
+    # Also patch any existing modules that might already be loaded
+    for module_name in list(sys.modules.keys()):
+        if 'chromadb' in module_name and 'telemetry' in module_name:
+            try:
+                sys.modules[module_name] = mock_telemetry
+            except:
+                pass
 
-# Apply telemetry bypass before any ChromaDB imports
-disable_chromadb_telemetry()
+# Apply telemetry bypass BEFORE any ChromaDB imports
+disable_chromadb_telemetry_completely()
 
 # Now import chromadb
 import chromadb
@@ -100,17 +124,17 @@ def get_chroma_client() -> chromadb.Client:
         try:
             # Replace telemetry client with our bypass
             if hasattr(client, '_telemetry_client'):
-                client._telemetry_client = TelemetryBypass()
+                client._telemetry_client = CompleteTelemetryBypass()
             
             # Also check for internal client telemetry
             if hasattr(client, '_client') and hasattr(client._client, 'telemetry_client'):
-                client._client.telemetry_client = TelemetryBypass()
+                client._client.telemetry_client = CompleteTelemetryBypass()
             
             # Disable telemetry on any other attributes
             for attr_name in dir(client):
                 attr = getattr(client, attr_name, None)
                 if hasattr(attr, 'telemetry_client'):
-                    setattr(attr, 'telemetry_client', TelemetryBypass())
+                    setattr(attr, 'telemetry_client', CompleteTelemetryBypass())
                     
         except Exception as e:
             logger.debug(f"Telemetry bypass applied: {e}")
