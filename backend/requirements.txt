@@ -16,10 +16,5 @@ transformers
 torch
 chromadb
 docling
-pdfminer.six
-pytesseract
-Pillow
-pdf2image
-pyjwt
 starlette
 einops
