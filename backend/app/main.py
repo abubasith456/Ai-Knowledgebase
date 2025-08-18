@@ -42,6 +42,7 @@ except ImportError:
 
 from fastapi import BackgroundTasks
 from .jobs import create_job, complete_job, fail_job, get_job, set_indexing_status
+from .schemas import RetrievedContext
 
 app = FastAPI(title="Doc KB", version="1.0.0")
 
@@ -136,17 +137,59 @@ def ingest(payload: IngestRequest, background: BackgroundTasks):
 @app.post("/query", response_model=QueryResponse)
 def query(payload: QueryRequest):
 	try:
-		# Validate index if provided
-		if payload.index_id:
+		# If no index_id provided, search across all collections
+		if not payload.index_id:
+			# Get all collections and search across them
+			import chromadb
+			from .ingest import _client
+			
+			client = _client()
+			collections = client.list_collections()
+			
+			all_contexts = []
+			all_answers = []
+			
+			for collection in collections:
+				try:
+					# Query each collection
+					results = collection.query(
+						query_texts=[payload.question],
+						n_results=payload.top_k or 5
+					)
+					
+					if results['ids'] and results['ids'][0]:
+						for i, doc_id in enumerate(results['ids'][0]):
+							context = RetrievedContext(
+								chunk_id=doc_id,
+								score=results['distances'][0][i] if results['distances'] else 0.0,
+								text=results['documents'][0][i] if results['documents'] else "",
+								metadata=results['metadatas'][0][i] if results['metadatas'] else {}
+							)
+							all_contexts.append(context)
+				except Exception as e:
+					logger.warning(f"Failed to query collection {collection.name}: {e}")
+					continue
+			
+			# Sort by score and take top_k
+			all_contexts.sort(key=lambda x: x.score, reverse=True)
+			top_contexts = all_contexts[:payload.top_k or 5]
+			
+			# Generate answer from top contexts
+			context_texts = [ctx.text for ctx in top_contexts]
+			answer = f"Based on the search results, here are the most relevant findings:\n\n" + "\n\n".join(context_texts)
+			
+			return QueryResponse(answer=answer, contexts=top_contexts)
+		else:
+			# Validate index if provided
 			index = get_index(payload.index_id)
 			if not index:
 				raise HTTPException(status_code=400, detail=f"Index '{payload.index_id}' not found")
-		
-		return query_knowledgebase(
-			question=payload.question,
-			top_k=payload.top_k or 5,
-			index_id=payload.index_id,
-		)
+			
+			return query_knowledgebase(
+				question=payload.question,
+				top_k=payload.top_k or 5,
+				index_id=payload.index_id,
+			)
 	except Exception as exc:
 		logger.exception("Query failed")
 		raise HTTPException(status_code=500, detail=str(exc))

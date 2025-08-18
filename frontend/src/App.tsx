@@ -72,26 +72,15 @@ export default function App() {
   const [uploadJob, setUploadJob] = useState<JobInfo | null>(null)
   const [processingJob, setProcessingJob] = useState<JobInfo | null>(null)
   
-  // Index creation
-  const [indexName, setIndexName] = useState<string>('')
-  const [creatingIndex, setCreatingIndex] = useState<boolean>(false)
-  
   // Chunking settings
   const [chunkMode, setChunkMode] = useState<ChunkMode>('auto')
   const [chunkSize, setChunkSize] = useState<number>(1000)
   const [chunkOverlap, setChunkOverlap] = useState<number>(200)
-  
-  // Index selection
-  const [selectedIndex, setSelectedIndex] = useState<string>('')
-  const [indices, setIndices] = useState<Index[]>([])
-  const [indexDocuments, setIndexDocuments] = useState<DocumentInfo[]>([])
-  const [documentNameExists, setDocumentNameExists] = useState<boolean>(false)
 
   // Query tab state
   const [question, setQuestion] = useState<string>('')
   const [answer, setAnswer] = useState<string>('')
   const [contexts, setContexts] = useState<RetrievedContext[]>([])
-  const [queryIndex, setQueryIndex] = useState<string>('')
   const [topK, setTopK] = useState<number>(5)
   const [integrationCode, setIntegrationCode] = useState<string>('')
   const [apiEndpoint, setApiEndpoint] = useState<string>('')
@@ -106,64 +95,6 @@ export default function App() {
       localStorage.setItem('theme', 'light')
     }
   }, [isDark])
-
-  // Load indices
-  async function loadIndices() {
-    try {
-      const res = await http.get('/index')
-      setIndices(res.data || [])
-    } catch (e: any) {
-      console.error('Failed to load indices:', e)
-    }
-  }
-
-  // Load documents in an index
-  async function loadIndexDocuments(indexId: string) {
-    try {
-      const res = await http.get(`/index/${indexId}/documents`)
-      setIndexDocuments(res.data || [])
-    } catch (e: any) {
-      console.error('Failed to load index documents:', e)
-      setIndexDocuments([])
-    }
-  }
-
-  // Check if document name exists
-  async function checkDocumentName(indexId: string, docName: string) {
-    if (!indexId || !docName) {
-      setDocumentNameExists(false)
-      return
-    }
-    try {
-      const res = await http.get(`/check-document-name/${indexId}/${encodeURIComponent(docName)}`)
-      setDocumentNameExists(res.data.exists)
-    } catch (e: any) {
-      console.error('Failed to check document name:', e)
-      setDocumentNameExists(false)
-    }
-  }
-
-  useEffect(() => {
-    loadIndices()
-  }, [])
-
-  // Check document name when it changes
-  useEffect(() => {
-    if (selectedIndex && documentName) {
-      checkDocumentName(selectedIndex, documentName)
-    } else {
-      setDocumentNameExists(false)
-    }
-  }, [selectedIndex, documentName])
-
-  // Load documents when index changes
-  useEffect(() => {
-    if (selectedIndex) {
-      loadIndexDocuments(selectedIndex)
-    } else {
-      setIndexDocuments([])
-    }
-  }, [selectedIndex])
 
   // Upload functionality
   async function doUpload(f: File) {
@@ -217,16 +148,7 @@ export default function App() {
 
   // Process document (parse and index)
   async function processDocument() {
-    if (!fileId || !documentName || !selectedIndex) return
-    
-    if (documentNameExists) {
-      setIngestLogs(prev => [...prev, { 
-        ts: new Date().toISOString(), 
-        level: 'error', 
-        message: `Document name "${documentName}" already exists in this index. Please choose a different name.` 
-      }])
-      return
-    }
+    if (!fileId || !documentName) return
     
     setIngestLogs(prev => [...prev, { 
       ts: new Date().toISOString(), 
@@ -238,7 +160,6 @@ export default function App() {
       const payload: any = {
         file_id: fileId,
         document_name: documentName,
-        index_id: selectedIndex,
         chunk_mode: chunkMode
       }
       
@@ -266,47 +187,13 @@ export default function App() {
     }
   }
 
-  // Create index
-  async function createIndex() {
-    if (!indexName) return
-    
-    setCreatingIndex(true)
-    try {
-      const res = await http.post('/index', { 
-        name: indexName
-      })
-      
-      if (res.data.job_id) {
-        setIngestLogs(prev => [...prev, { 
-          ts: new Date().toISOString(), 
-          level: 'info', 
-          message: `Index creation job started: ${res.data.job_id}` 
-        }])
-        startPolling(res.data.job_id, setProcessingJob)
-      }
-      
-      // Refresh index list
-      loadIndices()
-      setIndexName('') // Clear the input
-    } catch (e: any) {
-      setIngestLogs(prev => [...prev, { 
-        ts: new Date().toISOString(), 
-        level: 'error', 
-        message: `Index creation failed: ${e?.message}` 
-      }])
-    } finally {
-      setCreatingIndex(false)
-    }
-  }
-
   // Query functionality
   async function ask() {
-    if (!question || !queryIndex) return
+    if (!question) return
     try {
       const res = await http.post('/query', { 
         question, 
-        top_k: topK,
-        index_id: queryIndex 
+        top_k: topK
       })
       setAnswer(res.data.answer)
       setContexts(res.data.contexts)
@@ -328,8 +215,7 @@ export default function App() {
   -H "Content-Type: application/json" \\
   -d '{
     "question": "${question}",
-    "top_k": ${topK},
-    "index_id": "${queryIndex}"
+    "top_k": ${topK}
   }'`
 
     const pythonCode = `import requests
@@ -340,8 +226,7 @@ headers = {
 }
 data = {
     "question": "${question}",
-    "top_k": ${topK},
-    "index_id": "${queryIndex}"
+    "top_k": ${topK}
 }
 
 response = requests.post(url, json=data, headers=headers)
@@ -354,8 +239,7 @@ result = response.json()`
   },
   body: JSON.stringify({
     question: '${question}',
-    top_k: ${topK},
-    index_id: '${queryIndex}'
+    top_k: ${topK}
   })
 });
 
@@ -392,13 +276,8 @@ ${jsCode}`)
             message: `${info.type} completed successfully` 
           }])
           if (setter === setProcessingJob) {
-            // Refresh documents list after successful processing
-            if (selectedIndex) {
-              loadIndexDocuments(selectedIndex)
-            }
             // Switch to query tab
             setActiveTab('query')
-            setQueryIndex(selectedIndex)
           }
         } else if (info.status === 'failed') {
           setIngestLogs(prev => [...prev, { 
@@ -441,41 +320,16 @@ ${jsCode}`)
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Create Index (Optional)</CardTitle>
+                  <CardTitle>Upload & Process Document</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                       <div className="text-sm text-blue-800 dark:text-blue-200">
-                        <strong>Index Creation:</strong> Create a new index to organize your documents. You can skip this if you want to use an existing index.
+                        <strong>Automatic Processing:</strong> Upload your document and select chunking mode. Everything else is handled automatically.
                       </div>
                     </div>
                     
-                    <div className="flex gap-3">
-                      <input
-                        className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 flex-1"
-                        placeholder="Enter index name (e.g., Research Papers, Legal Documents)"
-                        value={indexName}
-                        onChange={e => setIndexName(e.target.value)}
-                        onKeyPress={e => e.key === 'Enter' && createIndex()}
-                      />
-                      <Button 
-                        onClick={createIndex}
-                        disabled={!indexName || creatingIndex}
-                      >
-                        {creatingIndex ? 'Creating...' : 'Create Index'}
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Step 1: Upload Document</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
                     <UploadArea onFile={doUpload} disabled={uploading} />
                     
                     {uploading && (
@@ -501,43 +355,18 @@ ${jsCode}`)
               {fileId && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Step 2: Configure Processing</CardTitle>
+                    <CardTitle>Configure Processing</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium mb-2">Document Name</label>
                         <input
-                          className={`border rounded px-3 py-2 w-full ${
-                            documentNameExists 
-                              ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
-                              : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
-                          }`}
-                          placeholder="Enter document name"
+                          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                          placeholder="Document name (auto-filled from filename)"
                           value={documentName}
                           onChange={e => setDocumentName(e.target.value)}
                         />
-                        {documentNameExists && (
-                          <p className="text-red-600 dark:text-red-400 text-sm mt-1">
-                            This document name already exists in the selected index
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Select Index</label>
-                        <select
-                          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
-                          value={selectedIndex}
-                          onChange={(e) => setSelectedIndex(e.target.value)}
-                        >
-                          <option value="">Select an index...</option>
-                          {indices.map(idx => (
-                            <option key={idx.id} value={idx.id}>
-                              {idx.name} ({idx.document_count} docs)
-                            </option>
-                          ))}
-                        </select>
                       </div>
 
                       <div>
@@ -551,7 +380,7 @@ ${jsCode}`)
                               onChange={(e) => setChunkMode(e.target.value as ChunkMode)}
                               className="mr-2"
                             />
-                            <span>Auto - Optimized hybrid chunking</span>
+                            <span>Auto - Optimized hybrid chunking (recommended)</span>
                           </label>
                           <label className="flex items-center">
                             <input
@@ -595,7 +424,7 @@ ${jsCode}`)
 
                       <Button 
                         onClick={processDocument}
-                        disabled={!fileId || !documentName || !selectedIndex || documentNameExists}
+                        disabled={!fileId || !documentName}
                         className="w-full"
                       >
                         Process Document
@@ -634,29 +463,6 @@ ${jsCode}`)
                 </Card>
               )}
 
-              {selectedIndex && indexDocuments.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Indexed Documents</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-4">
-                      {indexDocuments.map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                          <div>
-                            <h4 className="font-medium">{doc.name}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {doc.num_chunks} chunks
-                            </p>
-                          </div>
-                          <Badge color="green">Indexed</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               <Card>
                 <CardHeader>
                   <CardTitle>Processing Logs</CardTitle>
@@ -687,19 +493,12 @@ ${jsCode}`)
                 <CardContent>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium mb-2">Select Index</label>
-                      <select
-                        className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
-                        value={queryIndex}
-                        onChange={(e) => setQueryIndex(e.target.value)}
-                      >
-                        <option value="">Select an index...</option>
-                        {indices.map(idx => (
-                          <option key={idx.id} value={idx.id}>
-                            {idx.name} ({idx.document_count} docs)
-                          </option>
-                        ))}
-                      </select>
+                      <label className="block text-sm font-medium mb-2">Query All Documents</label>
+                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                        <div className="text-sm text-blue-800 dark:text-blue-200">
+                          <strong>Automatic Querying:</strong> Your query will search across all processed documents automatically.
+                        </div>
+                      </div>
                     </div>
                     
                     <div className="flex gap-3">
@@ -719,7 +518,7 @@ ${jsCode}`)
                         className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-20"
                         title="Number of top results to retrieve"
                       />
-                      <Button onClick={ask} disabled={!question || !queryIndex}>Ask</Button>
+                      <Button onClick={ask} disabled={!question}>Ask</Button>
                     </div>
                     
                     {answer && (

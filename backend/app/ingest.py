@@ -98,6 +98,19 @@ def ingest_document(
 		raise FileNotFoundError("Uploaded file not found")
 	file_path = matches[0]
 
+	# Auto-create index if not provided
+	if not index_id:
+		try:
+			from .index import create_index, get_all_indices
+			# Create index name from document name
+			index_name = f"Index_{document_name.replace('.', '_').replace(' ', '_')}"
+			index_id = create_index(index_name, "docling_ocr")
+			logger.info(f"Auto-created index: {index_name} with ID: {index_id}")
+		except Exception as e:
+			logger.warning(f"Failed to auto-create index: {e}")
+			# Fallback to document-based collection
+			index_id = None
+
 	# Parse
 	logger.info("Parsing document with Docling/ OCR where needed")
 	pages_text = parse_pdf_with_docling(str(file_path))
@@ -115,9 +128,9 @@ def ingest_document(
 	
 	chunks: List[Chunk] = hybrid_chunk_document(
 		pages_text=pages_text,
+		metadata={"document_name": document_name, **(metadata or {})},
 		max_tokens=max_tokens,
 		overlap_tokens=overlap_tokens,
-		metadata={"document_name": document_name, **(metadata or {})},
 	)
 
 	# Embed
