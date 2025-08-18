@@ -35,10 +35,25 @@ def _client() -> chromadb.Client:
 		return chromadb.PersistentClient(path=str(DATA_DIR))
 
 
+def _sanitize_name(name: str) -> str:
+	# Keep alphanumeric, underscore, hyphen; replace others with '_'
+	import re
+	name = re.sub(r"[^A-Za-z0-9_-]", "_", name)
+	# Ensure starts/ends alphanumeric
+	name = re.sub(r"^[^A-Za-z0-9]+", "", name)
+	name = re.sub(r"[^A-Za-z0-9]+$", "", name)
+	# Bound length 3..63; trim if needed
+	if len(name) < 3:
+		name = (name + "___")[:3]
+	return name[:63]
+
+
 def _collection_name(x_api_key: str, document_name: str) -> str:
 	prefix = os.environ.get("COLLECTION_PREFIX", "kb_")
 	user_key = str(abs(hash(x_api_key)))[:10]
-	return f"{prefix}{user_key}_{document_name}"
+	doc_part = _sanitize_name(document_name)
+	base = f"{prefix}{user_key}_{doc_part}"
+	return _sanitize_name(base)
 
 
 def save_upload_temp(file: UploadFile, x_api_key: str) -> Tuple[str, str]:

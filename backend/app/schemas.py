@@ -30,6 +30,7 @@ class IngestResponse(BaseModel):
 	document_name: str
 	num_chunks: int
 	chunk_ids: List[str]
+	job_id: Optional[str] = None
 
 
 class QueryRequest(BaseModel):
@@ -47,4 +48,20 @@ class RetrievedContext(BaseModel):
 class QueryResponse(BaseModel):
 	answer: str
 	contexts: List[RetrievedContext]
+
+
+class JobCreateResponse(BaseModel):
+	job_id: str
+
+
+class JobInfo(BaseModel):
+	id: str
+	type: str  # 'upload' | 'ingest'
+	status: str  # 'processing' | 'completed' | 'failed'
+	message: Optional[str] = None
+	file_id: Optional[str] = None
+	document_name: Optional[str] = None
+	num_chunks: Optional[int] = None
+	started_at: Optional[str] = None
+	finished_at: Optional[str] = None
 

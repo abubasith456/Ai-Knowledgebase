@@ -29,6 +29,9 @@ except ImportError:
     from ingest import save_upload_temp, ingest_document
     from query import query_knowledgebase
 
+from fastapi import BackgroundTasks
+from .jobs import create_job, complete_job, fail_job, get_job
+
 app = FastAPI(title="Doc KB", version="1.0.0")
 
 app.add_middleware(
@@ -67,27 +70,34 @@ def auth_validate(x_api_key: str = Depends(require_api_key)):
 def upload(file: UploadFile = File(...), x_api_key: str = Depends(require_api_key)):
 	try:
 		file_id, path = save_upload_temp(file, x_api_key)
-		return {"file_id": file_id, "path": path}
+		job_id = create_job("upload", file_id=file_id)
+		# Upload completes immediately; mark completed
+		complete_job(job_id, message="uploaded")
+		return {"file_id": file_id, "path": path, "job_id": job_id}
 	except Exception as exc:
 		logger.exception("Upload failed")
 		raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.post("/ingest", response_model=IngestResponse)
-def ingest(payload: IngestRequest, x_api_key: str = Depends(require_api_key)):
-	try:
-		result = ingest_document(
-			x_api_key=x_api_key,
-			file_id=payload.file_id,
-			document_name=payload.document_name,
-			metadata=payload.metadata or {},
-		)
-		return result
-	except FileNotFoundError as nf:
-		raise HTTPException(status_code=404, detail=str(nf))
-	except Exception as exc:
-		logger.exception("Ingestion failed")
-		raise HTTPException(status_code=500, detail=str(exc))
+def ingest(payload: IngestRequest, background: BackgroundTasks, x_api_key: str = Depends(require_api_key)):
+	job_id = create_job("ingest", file_id=payload.file_id, document_name=payload.document_name)
+
+	def _run_ingest():
+		try:
+			result = ingest_document(
+				x_api_key=x_api_key,
+				file_id=payload.file_id,
+				document_name=payload.document_name,
+				metadata=payload.metadata or {},
+			)
+			complete_job(job_id, message="ingested", num_chunks=result.num_chunks)
+		except Exception as exc:
+			fail_job(job_id, str(exc))
+
+	background.add_task(_run_ingest)
+	# Immediate response with job info placeholder
+	return IngestResponse(document_name=payload.document_name, num_chunks=0, chunk_ids=[], job_id=job_id)
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -101,4 +111,12 @@ def query(payload: QueryRequest, x_api_key: str = Depends(require_api_key)):
 	except Exception as exc:
 		logger.exception("Query failed")
 		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/jobs/{job_id}")
+def job_status(job_id: str, x_api_key: str = Depends(require_api_key)):
+	info = get_job(job_id)
+	if not info:
+		raise HTTPException(status_code=404, detail="Job not found")
+	return info
 
