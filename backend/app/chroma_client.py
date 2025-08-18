@@ -9,27 +9,16 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
+# Import our aggressive telemetry fix first
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import telemetry_fix
+
 # Force disable telemetry at the module level
 os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_TELEMETRY"] = "FALSE"
+os.environ["CHROMA_SERVER_TELEMETRY"] = "FALSE"
 
-# MONKEY PATCH: Disable telemetry before importing chromadb
-class MockTelemetryClient:
-    """Mock telemetry client that does nothing."""
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    def capture(self, *args, **kwargs):
-        pass
-    
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
-
-# Patch the telemetry module before importing chromadb
-sys.modules['chromadb.telemetry'] = type(sys)('chromadb.telemetry')
-sys.modules['chromadb.telemetry'].TelemetryClient = MockTelemetryClient
-
-# Now import chromadb after patching
+# Now import chromadb after aggressive patching
 import chromadb
 from chromadb.config import Settings
 

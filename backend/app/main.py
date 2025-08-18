@@ -1,6 +1,8 @@
-# Disable ChromaDB telemetry globally
+# AGGRESSIVE ChromaDB telemetry disabler - MUST be first import
+import sys
 import os
-os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import telemetry_fix
 
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
