@@ -2,18 +2,32 @@ from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from loguru import logger
-from .schemas import (
-	APIKeyResponse,
-	APIKeyRegisterRequest,
-	APIKeyValidateResponse,
-	IngestRequest,
-	IngestResponse,
-	QueryRequest,
-	QueryResponse,
-)
-from .auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
-from .ingest import save_upload_temp, ingest_document
-from .query import query_knowledgebase
+try:
+    from .schemas import (
+		APIKeyResponse,
+		APIKeyRegisterRequest,
+		APIKeyValidateResponse,
+		IngestRequest,
+		IngestResponse,
+		QueryRequest,
+		QueryResponse,
+    )
+    from .auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
+    from .ingest import save_upload_temp, ingest_document
+    from .query import query_knowledgebase
+except ImportError:
+    from schemas import (
+		APIKeyResponse,
+		APIKeyRegisterRequest,
+		APIKeyValidateResponse,
+		IngestRequest,
+		IngestResponse,
+		QueryRequest,
+		QueryResponse,
+    )
+    from auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
+    from ingest import save_upload_temp, ingest_document
+    from query import query_knowledgebase
 
 app = FastAPI(title="Doc KB", version="1.0.0")
 

@@ -7,10 +7,16 @@ from fastapi import UploadFile
 from loguru import logger
 import chromadb
 
-from .schemas import IngestResponse, Chunk
-from .parsing import parse_pdf_with_docling
-from .chunking import hybrid_chunk_document
-from .embeddings import get_embedding_function
+try:
+	from .schemas import IngestResponse, Chunk
+	from .parsing import parse_pdf_with_docling
+	from .chunking import hybrid_chunk_document
+	from .embeddings import get_embedding_function
+except ImportError:
+	from schemas import IngestResponse, Chunk
+	from parsing import parse_pdf_with_docling
+	from chunking import hybrid_chunk_document
+	from embeddings import get_embedding_function
 
 
 DATA_DIR = Path(os.environ.get("CHROMA_DATA_DIR", "/data/chroma"))

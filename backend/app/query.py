@@ -3,8 +3,12 @@ from typing import List
 from loguru import logger
 import chromadb
 
-from .embeddings import get_embedding_function
-from .schemas import QueryResponse, RetrievedContext
+try:
+    from .embeddings import get_embedding_function
+    from .schemas import QueryResponse, RetrievedContext
+except ImportError:
+    from embeddings import get_embedding_function
+    from schemas import QueryResponse, RetrievedContext
 
 
 def _client() -> chromadb.Client:
