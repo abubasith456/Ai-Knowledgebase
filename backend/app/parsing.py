@@ -1,7 +1,6 @@
 from typing import List
 from loguru import logger
 
-# Prefer Docling; fallback to pdfminer + Tesseract OCR
 from pdf2image import convert_from_path
 import pytesseract
 from pdfminer.high_level import extract_pages
@@ -15,22 +14,32 @@ except Exception:
 
 
 def parse_pdf_with_docling(file_path: str) -> List[str]:
-	"""Return list of page texts. Prefer Docling; fallback to text layer or OCR."""
+	"""Parse a PDF into page-like texts.
+
+	Order of operations:
+	1) Use Docling's DocumentConverter when available (preferred).
+	2) Fallback to text-layer extraction via pdfminer.
+	3) Fallback to OCR using Tesseract.
+	"""
 	if _HAS_DOCLING:
 		try:
-			conv = DocumentConverter()
-			result = conv.convert(file_path)
-			doc_text = result.document.export_to_markdown() if hasattr(result.document, 'export_to_markdown') else str(result.document)
-			if "\f" in doc_text:
-				pages_text = [p.strip() for p in doc_text.split("\f")]
+			converter = DocumentConverter()
+			result = converter.convert(file_path)
+			doc = result.document
+			# Export as markdown (rich, structure-aware) if available
+			text = doc.export_to_markdown() if hasattr(doc, "export_to_markdown") else str(doc)
+			# Some converters separate pages with form-feed \f. If not, chunk to page-like windows
+			if "\f" in text:
+				pages = [p.strip() for p in text.split("\f")]
 			else:
-				pages_text = [doc_text[i:i+1500] for i in range(0, len(doc_text), 1500)]
-			if any(t.strip() for t in pages_text):
-				return [t.strip() for t in pages_text]
+				pages = [text[i:i+2000] for i in range(0, len(text), 2000)]
+			pages = [p for p in pages if p.strip()]
+			if pages:
+				return pages
 		except Exception as exc:
 			logger.warning(f"Docling conversion failed, falling back: {exc}")
 
-	# Fallback: extract text layer
+	# Fallback: text layer via pdfminer
 	pages_text: List[str] = []
 	try:
 		for page_layout in extract_pages(file_path):
