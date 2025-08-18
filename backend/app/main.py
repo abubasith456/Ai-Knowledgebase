@@ -97,17 +97,8 @@ def upload(file: UploadFile = File(...)):
 
 @app.post("/ingest", response_model=IngestResponse)
 def ingest(payload: IngestRequest, background: BackgroundTasks):
-	# Validate index if provided
-	if payload.index_id:
-		index = get_index(payload.index_id)
-		if not index:
-			raise HTTPException(status_code=400, detail=f"Index '{payload.index_id}' not found")
-	
 	# Create descriptive job name
 	job_name = f"Ingest: {payload.document_name}"
-	if payload.index_id:
-		index_name = get_index(payload.index_id).name if get_index(payload.index_id) else "Unknown Index"
-		job_name += f" → {index_name}"
 	
 	job_id = create_job(
 		job_type="ingest", 
@@ -124,7 +115,7 @@ def ingest(payload: IngestRequest, background: BackgroundTasks):
 				file_id=payload.file_id,
 				document_name=payload.document_name,
 				metadata=payload.metadata or {},
-				index_id=payload.index_id,
+				job_id=job_id,
 				chunk_mode=payload.chunk_mode,
 				chunk_size=payload.chunk_size,
 				chunk_overlap=payload.chunk_overlap,
@@ -141,66 +132,134 @@ def ingest(payload: IngestRequest, background: BackgroundTasks):
 @app.post("/query", response_model=QueryResponse)
 def query(payload: QueryRequest):
 	try:
-		# If no index_id provided, search across all collections
-		if not payload.index_id:
-			# Get all collections and search across them
-			import chromadb
-			from .chroma_client import get_chroma_client
-			
-			client = get_chroma_client()
-			collections = client.list_collections()
-			
-			all_contexts = []
-			all_answers = []
-			
-			for collection in collections:
-				try:
-					# Query each collection
-					results = collection.query(
-						query_texts=[payload.question],
-						n_results=payload.top_k or 5
-					)
-					
-					if results['ids'] and results['ids'][0]:
-						for i, doc_id in enumerate(results['ids'][0]):
-							context = RetrievedContext(
-								chunk_id=doc_id,
-								score=results['distances'][0][i] if results['distances'] else 0.0,
-								text=results['documents'][0][i] if results['documents'] else "",
-								metadata=results['metadatas'][0][i] if results['metadatas'] else {}
-							)
-							all_contexts.append(context)
-				except Exception as e:
-					# Skip collections with dimension mismatches or other issues
-					if "Embedding dimension" in str(e):
-						logger.info(f"Skipping collection {collection.name} due to dimension mismatch (old model)")
-					else:
-						logger.warning(f"Failed to query collection {collection.name}: {e}")
-					continue
-			
-			# Sort by score and take top_k
-			all_contexts.sort(key=lambda x: x.score, reverse=True)
-			top_contexts = all_contexts[:payload.top_k or 5]
-			
-			# Generate answer from top contexts
-			context_texts = [ctx.text for ctx in top_contexts]
-			answer = f"Based on the search results, here are the most relevant findings:\n\n" + "\n\n".join(context_texts)
-			
-			return QueryResponse(answer=answer, contexts=top_contexts)
-		else:
-			# Validate index if provided
-			index = get_index(payload.index_id)
-			if not index:
-				raise HTTPException(status_code=400, detail=f"Index '{payload.index_id}' not found")
-			
-			return query_knowledgebase(
+		# If job_id provided, query specific document collection
+		if payload.job_id:
+			return query_document_by_job_id(
 				question=payload.question,
 				top_k=payload.top_k or 5,
-				index_id=payload.index_id,
+				job_id=payload.job_id
+			)
+		else:
+			# Legacy: search across all collections
+			return query_all_collections(
+				question=payload.question,
+				top_k=payload.top_k or 5
 			)
 	except Exception as exc:
 		logger.exception("Query failed")
 		raise HTTPException(status_code=500, detail=str(exc))
+
+
+def query_document_by_job_id(question: str, top_k: int, job_id: str) -> QueryResponse:
+	"""Query a specific document collection using job ID."""
+	try:
+		from .chroma_client import get_chroma_client
+		from .embeddings import get_embedding_function
+		
+		client = get_chroma_client()
+		collections = client.list_collections()
+		
+		# Find collection that contains this job_id
+		target_collection = None
+		for collection in collections:
+			try:
+				# Check if collection contains chunks with this job_id
+				results = collection.query(
+					query_texts=[""],
+					n_results=1,
+					where={"job_id": job_id}
+				)
+				if results['ids'] and results['ids'][0]:
+					target_collection = collection
+					break
+			except Exception as e:
+				logger.debug(f"Collection {collection.name} check: {e}")
+				continue
+		
+		if not target_collection:
+			raise HTTPException(status_code=404, detail=f"No collection found for job_id: {job_id}")
+		
+		# Query the specific collection
+		embedder = get_embedding_function()
+		q_emb = embedder([question])[0]
+		
+		results = target_collection.query(
+			query_embeddings=[q_emb],
+			n_results=top_k
+		)
+		
+		contexts = []
+		ids = results.get('ids', [[]])[0]
+		docs = results.get('documents', [[]])[0]
+		dists = results.get('distances', [[]])[0]
+		metas = results.get('metadatas', [[]])[0]
+		
+		for i, doc in enumerate(docs):
+			score = float(dists[i]) if i < len(dists) else 0.0
+			ctx = RetrievedContext(
+				chunk_id=ids[i],
+				score=score,
+				text=doc,
+				metadata=metas[i] if i < len(metas) and isinstance(metas[i], dict) else {},
+			)
+			contexts.append(ctx)
+		
+		# Generate answer from contexts
+		context_texts = [ctx.text for ctx in contexts]
+		answer = f"Based on the document content, here are the most relevant findings:\n\n" + "\n\n".join(context_texts)
+		
+		return QueryResponse(answer=answer, contexts=contexts)
+		
+	except Exception as exc:
+		logger.exception(f"Query failed for job_id {job_id}")
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+def query_all_collections(question: str, top_k: int) -> QueryResponse:
+	"""Query all collections (legacy behavior)."""
+	# Get all collections and search across them
+	import chromadb
+	from .chroma_client import get_chroma_client
+	
+	client = get_chroma_client()
+	collections = client.list_collections()
+	
+	all_contexts = []
+	
+	for collection in collections:
+		try:
+			# Query each collection
+			results = collection.query(
+				query_texts=[question],
+				n_results=top_k
+			)
+			
+			if results['ids'] and results['ids'][0]:
+				for i, doc_id in enumerate(results['ids'][0]):
+					context = RetrievedContext(
+						chunk_id=doc_id,
+						score=results['distances'][0][i] if results['distances'] else 0.0,
+						text=results['documents'][0][i] if results['documents'] else "",
+						metadata=results['metadatas'][0][i] if results['metadatas'] else {}
+					)
+					all_contexts.append(context)
+		except Exception as e:
+			# Skip collections with dimension mismatches or other issues
+			if "Embedding dimension" in str(e):
+				logger.info(f"Skipping collection {collection.name} due to dimension mismatch (old model)")
+			else:
+				logger.warning(f"Failed to query collection {collection.name}: {e}")
+			continue
+	
+	# Sort by score and take top_k
+	all_contexts.sort(key=lambda x: x.score, reverse=True)
+	top_contexts = all_contexts[:top_k]
+	
+	# Generate answer from top contexts
+	context_texts = [ctx.text for ctx in top_contexts]
+	answer = f"Based on the search results, here are the most relevant findings:\n\n" + "\n\n".join(context_texts)
+	
+	return QueryResponse(answer=answer, contexts=top_contexts)
 
 
 @app.get("/jobs/{job_id}")
@@ -209,6 +268,100 @@ def job_status(job_id: str):
 	if not info:
 		raise HTTPException(status_code=404, detail="Job not found")
 	return info
+
+
+@app.get("/collections")
+def list_collections():
+	"""List all available document collections with their job IDs."""
+	try:
+		from .chroma_client import get_chroma_client
+		
+		client = get_chroma_client()
+		collections = client.list_collections()
+		
+		collection_info = []
+		for collection in collections:
+			try:
+				# Get collection metadata to find job_id
+				results = collection.get()
+				if results.get('metadatas'):
+					# Find unique job_ids in this collection
+					job_ids = set()
+					for meta in results['metadatas']:
+						if isinstance(meta, dict) and 'job_id' in meta:
+							job_ids.add(meta['job_id'])
+					
+					for job_id in job_ids:
+						# Get job info
+						job_info = get_job(job_id)
+						if job_info:
+							collection_info.append({
+								"collection_name": collection.name,
+								"job_id": job_id,
+								"document_name": job_info.get('document_name', 'Unknown'),
+								"status": job_info.get('status', 'Unknown'),
+								"num_chunks": job_info.get('num_chunks', 0),
+								"created_at": job_info.get('started_at', ''),
+								"completed_at": job_info.get('finished_at', '')
+							})
+			except Exception as e:
+				logger.warning(f"Failed to get info for collection {collection.name}: {e}")
+				continue
+		
+		return {
+			"collections": collection_info,
+			"total": len(collection_info)
+		}
+		
+	except Exception as exc:
+		logger.exception("Failed to list collections")
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/collections/{job_id}")
+def get_collection_info(job_id: str):
+	"""Get information about a specific collection by job ID."""
+	try:
+		from .chroma_client import get_chroma_client
+		
+		client = get_chroma_client()
+		collections = client.list_collections()
+		
+		# Find collection that contains this job_id
+		target_collection = None
+		for collection in collections:
+			try:
+				results = collection.query(
+					query_texts=[""],
+					n_results=1,
+					where={"job_id": job_id}
+				)
+				if results['ids'] and results['ids'][0]:
+					target_collection = collection
+					break
+			except Exception as e:
+				continue
+		
+		if not target_collection:
+			raise HTTPException(status_code=404, detail=f"No collection found for job_id: {job_id}")
+		
+		# Get collection details
+		collection_data = target_collection.get()
+		job_info = get_job(job_id)
+		
+		return {
+			"collection_name": target_collection.name,
+			"job_id": job_id,
+			"document_name": job_info.get('document_name', 'Unknown') if job_info else 'Unknown',
+			"status": job_info.get('status', 'Unknown') if job_info else 'Unknown',
+			"num_chunks": len(collection_data.get('ids', [])),
+			"created_at": job_info.get('started_at', '') if job_info else '',
+			"completed_at": job_info.get('finished_at', '') if job_info else ''
+		}
+		
+	except Exception as exc:
+		logger.exception(f"Failed to get collection info for job_id {job_id}")
+		raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/parsers", response_model=List[Parser])

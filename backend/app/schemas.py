@@ -46,7 +46,7 @@ class IngestResponse(BaseModel):
 class QueryRequest(BaseModel):
 	question: str
 	top_k: Optional[int] = 5
-	index_id: Optional[str] = None
+	job_id: Optional[str] = None  # Job ID to query specific document collection
 
 
 class RetrievedContext(BaseModel):

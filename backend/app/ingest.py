@@ -52,18 +52,17 @@ def _sanitize_name(name: str) -> str:
 	return name[:63]
 
 
-def _collection_name(document_name: str, index_id: Optional[str] = None) -> str:
+def _collection_name(document_name: str, job_id: str) -> str:
+	"""Create collection name based on document name and job ID."""
 	prefix = os.environ.get("COLLECTION_PREFIX", "kb_")
 	
-	if index_id:
-		# Use index-based collection name
-		base = f"{prefix}index_{index_id}"
-	else:
-		# Use document-based collection name (legacy)
-		doc_part = _sanitize_name(document_name)
-		base = f"{prefix}{doc_part}"
+	# Sanitize document name for collection name
+	doc_part = _sanitize_name(document_name)
 	
-	return _sanitize_name(base)
+	# Create unique collection name with job ID
+	collection_name = f"{prefix}{doc_part}_{job_id[:8]}"
+	
+	return _sanitize_name(collection_name)
 
 
 def save_upload_temp(file: UploadFile) -> Tuple[str, str]:
@@ -83,7 +82,7 @@ def ingest_document(
     file_id: str, 
     document_name: str, 
     metadata: Dict[str, Any], 
-    index_id: Optional[str] = None,
+    job_id: str,
     chunk_mode: ChunkMode = ChunkMode.AUTO,
     chunk_size: Optional[int] = None,
     chunk_overlap: Optional[int] = None
@@ -94,19 +93,6 @@ def ingest_document(
 	if not matches:
 		raise FileNotFoundError("Uploaded file not found")
 	file_path = matches[0]
-
-	# Auto-create index if not provided
-	if not index_id:
-		try:
-			from .index import create_index, get_all_indices
-			# Create index name from document name
-			index_name = f"Index_{document_name.replace('.', '_').replace(' ', '_')}"
-			index_id = create_index(index_name, "advanced")  # Use "advanced" parser instead of "docling_ocr"
-			logger.info(f"Auto-created index: {index_name} with ID: {index_id}")
-		except Exception as e:
-			logger.warning(f"Failed to auto-create index: {e}")
-			# Fallback to document-based collection
-			index_id = None
 
 	# Parse
 	logger.info("Parsing document with Docling/ OCR where needed")
@@ -125,7 +111,7 @@ def ingest_document(
 	
 	chunks: List[Chunk] = hybrid_chunk_document(
 		pages_text=pages_text,
-		metadata={"document_name": document_name, **(metadata or {})},
+		metadata={"document_name": document_name, "job_id": job_id, **(metadata or {})},
 		max_tokens=max_tokens,
 		overlap_tokens=overlap_tokens,
 	)
@@ -133,7 +119,11 @@ def ingest_document(
 	# Embed
 	logger.info("Embedding chunks and upserting into Chroma")
 	client = _client()
-	collection = client.get_or_create_collection(name=_collection_name(document_name, index_id))
+	
+	# Create collection name based on document name and job ID
+	collection_name = _collection_name(document_name, job_id)
+	collection = client.get_or_create_collection(name=collection_name)
+	
 	embedder = get_embedding_function()
 	texts = [c.text for c in chunks]
 	embs = embedder(texts)
@@ -141,21 +131,6 @@ def ingest_document(
 	metas = [c.metadata for c in chunks]
 	collection.upsert(ids=ids, embeddings=embs, documents=texts, metadatas=metas)
 
-	# Update index document count if using an index
-	if index_id:
-		try:
-			from .index import update_index_document_count, get_index
-			index = get_index(index_id)
-			if index:
-				# Get current document count from ChromaDB collection
-				collection_info = collection.get()
-				unique_docs = set()
-				if collection_info.get('metadatas'):
-					for meta in collection_info['metadatas']:
-						if isinstance(meta, dict) and 'document_name' in meta:
-							unique_docs.add(meta['document_name'])
-				update_index_document_count(index_id, len(unique_docs))
-		except Exception as e:
-			logger.warning(f"Failed to update index document count: {e}")
+	logger.info(f"Created collection '{collection_name}' with {len(ids)} chunks for job {job_id}")
 
 	return IngestResponse(document_name=document_name, num_chunks=len(ids), chunk_ids=ids)
