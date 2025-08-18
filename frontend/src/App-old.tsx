@@ -7,6 +7,7 @@ import { UploadArea } from './components/UploadArea'
 import { ProgressBar } from './components/ProgressBar'
 import { ThemeToggle } from './components/ThemeToggle'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './components/Tabs'
+import { Select } from './components/Select'
 
 type IngestLog = { ts: string, level: 'info'|'error', message: string }
 
@@ -30,6 +31,13 @@ type JobInfo = {
   finished_at?: string
   progress?: number
   job_name?: string
+}
+
+type Parser = {
+  id: string
+  name: string
+  description: string
+  supported_formats: string[]
 }
 
 type Index = {
@@ -75,6 +83,8 @@ export default function App() {
   const [integrationCode, setIntegrationCode] = useState<string>('')
   const [apiEndpoint, setApiEndpoint] = useState<string>('')
 
+  // No API key needed anymore
+
   // Theme effect
   useEffect(() => {
     if (isDark) {
@@ -85,6 +95,8 @@ export default function App() {
       localStorage.setItem('theme', 'light')
     }
   }, [isDark])
+
+  // No API key generation needed
 
   // Load index
   async function loadIndices() {
@@ -152,12 +164,11 @@ export default function App() {
 
   // Create index
   async function createIndex() {
-    if (!indexName) return
     
     setIndexingProgress(0)
     try {
       const res = await http.post('/index', { 
-        name: indexName
+        name: indexName, 
       })
       
       if (res.data.job_id) {
@@ -171,7 +182,6 @@ export default function App() {
       
       // Refresh index list
       loadIndices()
-      setIndexName('') // Clear the input
     } catch (e: any) {
       setIngestLogs(prev => [...prev, { 
         ts: new Date().toISOString(), 
@@ -317,7 +327,7 @@ ${jsCode}`)
           }])
           if (setter === setIndexingJob) {
             setIndexingProgress(100)
-            loadIndices() // Refresh index list
+            loadIndices() // Refresh indices list
           }
         } else if (info.status === 'failed') {
           setIngestLogs(prev => [...prev, { 
@@ -337,6 +347,8 @@ ${jsCode}`)
     poll()
   }
 
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -345,14 +357,14 @@ ${jsCode}`)
             <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
               Doc KB
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">Document Knowledge Base with Docling OCR</p>
+            <p className="text-gray-600 dark:text-gray-400">Document Knowledge Base System</p>
           </div>
           <ThemeToggle isDark={isDark} onToggle={() => setIsDark(!isDark)} />
         </header>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
-            <TabsTrigger value="parser">Upload</TabsTrigger>
+            <TabsTrigger value="parser">Parser</TabsTrigger>
             <TabsTrigger value="indexing">Index</TabsTrigger>
             <TabsTrigger value="query">Query & Test</TabsTrigger>
           </TabsList>
@@ -360,17 +372,14 @@ ${jsCode}`)
           <TabsContent value="parser">
             <Card>
               <CardHeader>
-                <CardTitle>Document Upload</CardTitle>
+                <CardTitle>Document Parser</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                    <div className="text-sm text-blue-800 dark:text-blue-200">
-                      <strong>Automatic Processing:</strong> All documents are processed with Docling OCR for maximum accuracy. Hybrid chunking is automatically optimized based on model token limits.
-                    </div>
-                  </div>
-                  
-                  <UploadArea onFile={doUpload} disabled={uploading} />
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Select Parser</label>
+                    <Select
+                      onChange={(e) => setSelectedParser(e.target.value)}
                   
                   {uploading && (
                     <ProgressBar 
@@ -383,28 +392,28 @@ ${jsCode}`)
                   <div className="flex gap-3 items-center">
                     <input
                       className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 flex-1"
-                      placeholder="Document Name (auto-filled from filename)"
+                      placeholder="Document Name"
                       value={documentName}
                       onChange={e => setDocumentName(e.target.value)}
                     />
                   </div>
                   
-                  <div className="text-sm space-y-1">
-                    {uploadJob && (
-                      <div className="flex items-center gap-2">
-                        <span>{uploadJob.job_name || 'Upload'}</span>
-                        <Badge color={uploadJob.status === 'completed' ? 'green' : uploadJob.status === 'failed' ? 'red' : 'blue'}>
-                          {uploadJob.status}
-                        </Badge>
-                        {uploadJob.message && (
-                          <span className="text-xs text-gray-500">- {uploadJob.message}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                                      <div className="text-sm space-y-1">
+                      {uploadJob && (
+                        <div className="flex items-center gap-2">
+                          <span>{uploadJob.job_name || 'Upload'}</span>
+                          <Badge color={uploadJob.status === 'completed' ? 'green' : uploadJob.status === 'failed' ? 'red' : 'blue'}>
+                            {uploadJob.status}
+                          </Badge>
+                          {uploadJob.message && (
+                            <span className="text-xs text-gray-500">- {uploadJob.message}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   
                   <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 h-48 overflow-auto text-sm">
-                    <div className="font-medium mb-2">Processing Logs</div>
+                    <div className="font-medium mb-2">Parser Logs</div>
                     {ingestLogs.length === 0 ? (
                       <div className="text-gray-500 dark:text-gray-400">No logs yet...</div>
                     ) : (
@@ -428,25 +437,22 @@ ${jsCode}`)
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                      <div className="text-sm text-green-800 dark:text-green-200">
-                        <strong>Simplified Indexing:</strong> All indices use Docling OCR parsing with hybrid chunking automatically optimized for your model's token limits.
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Index Name</label>
+                        <input
+                          className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                          placeholder="Enter index name"
+                          value={indexName}
+                          onChange={e => setIndexName(e.target.value)}
+                        />
                       </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Index Name</label>
-                      <input
-                        className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
-                        placeholder="Enter index name (e.g., Research Papers, Legal Documents)"
-                        value={indexName}
-                        onChange={e => setIndexName(e.target.value)}
-                      />
-                    </div>
-                    
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Select Parser</label>
+                        <Select
+                          onChange={(e) => setSelectedParserForIndex(e.target.value)}
                     <Button 
                       onClick={createIndex}
-                      disabled={!indexName}
                     >
                       Create Index
                     </Button>
@@ -470,18 +476,14 @@ ${jsCode}`)
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">Select Index</label>
-                      <select
-                        className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                      <Select
                         value={selectedIndex}
                         onChange={(e) => setSelectedIndex(e.target.value)}
-                      >
-                        <option value="">Select an index...</option>
-                        {indices.map(idx => (
-                          <option key={idx.id} value={idx.id}>
-                            {idx.name} ({idx.document_count} docs)
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: '', label: 'Select an index...' },
+                          ...indices.map(idx => ({ value: idx.id, label: `${idx.name} (${idx.document_count} docs)` }))
+                        ]}
+                      />
                     </div>
                     
                     <Button 
@@ -545,7 +547,7 @@ ${jsCode}`)
                               {index.document_count} documents · Created {new Date(index.created_at).toLocaleDateString()}
                             </p>
                           </div>
-                          <Badge color="green">Docling OCR</Badge>
+                          <Badge color="blue">{index.parser_id}</Badge>
                         </div>
                       ))}
                     </div>
@@ -565,18 +567,14 @@ ${jsCode}`)
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-2">Select Index</label>
-                      <select
-                        className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 rounded px-3 py-2 w-full"
+                      <Select
                         value={selectedIndex}
                         onChange={(e) => setSelectedIndex(e.target.value)}
-                      >
-                        <option value="">Select an index...</option>
-                        {indices.map(idx => (
-                          <option key={idx.id} value={idx.id}>
-                            {idx.name} ({idx.document_count} docs)
-                          </option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: '', label: 'Select an index...' },
+                          ...indices.map(idx => ({ value: idx.id, label: `${idx.name} (${idx.document_count} docs)` }))
+                        ]}
+                      />
                     </div>
                     
                     <div className="flex gap-3">

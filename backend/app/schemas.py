@@ -88,7 +88,6 @@ class Index(BaseModel):
 
 class IndexCreateRequest(BaseModel):
 	name: str
-	parser_id: str
 
 
 class IndexCreateResponse(BaseModel):

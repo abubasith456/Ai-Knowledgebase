@@ -63,13 +63,8 @@ def health():
 
 
 @app.post("/upload")
-def upload(file: UploadFile = File(...), parser_id: str = "default"):
+def upload(file: UploadFile = File(...)):
 	try:
-		# Validate parser exists
-		parser = get_parser(parser_id)
-		if not parser:
-			raise HTTPException(status_code=400, detail=f"Parser '{parser_id}' not found")
-		
 		# Use filename as document name
 		document_name = file.filename or "unknown_file"
 		job_name = f"Upload: {document_name}"
@@ -80,7 +75,7 @@ def upload(file: UploadFile = File(...), parser_id: str = "default"):
 			file_id=file_id, 
 			document_name=document_name,
 			job_name=job_name,
-			message=f"Uploading {document_name} with {parser.name}"
+			message=f"Uploading {document_name} with Docling OCR"
 		)
 		# Upload completes immediately; mark completed
 		complete_job(job_id, message=f"Successfully uploaded {document_name}")
@@ -88,7 +83,6 @@ def upload(file: UploadFile = File(...), parser_id: str = "default"):
 			"file_id": file_id, 
 			"path": path, 
 			"job_id": job_id, 
-			"parser_id": parser_id,
 			"document_name": document_name
 		}
 	except Exception as exc:
@@ -178,18 +172,14 @@ def list_index():
 @app.post("/index", response_model=IndexCreateResponse)
 def create_new_index(payload: IndexCreateRequest, background: BackgroundTasks):
 	"""Create a new index."""
-	# Validate parser exists
-	parser = get_parser(payload.parser_id)
-	if not parser:
-		raise HTTPException(status_code=400, detail=f"Parser '{payload.parser_id}' not found")
-	
 	try:
-		index_id = create_index(payload.name, payload.parser_id)
+		# Always use default parser (Docling OCR)
+		index_id = create_index(payload.name, "docling_ocr")
 		job_name = f"Create Index: {payload.name}"
 		job_id = create_job(
 			job_type="index_creation", 
 			job_name=job_name,
-			message=f"Creating index '{payload.name}' with {parser.name}"
+			message=f"Creating index '{payload.name}' with Docling OCR and hybrid chunking"
 		)
 		
 		def _complete_index_creation():
