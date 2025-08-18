@@ -14,7 +14,7 @@ scikit-learn
 sentence-transformers
 transformers
 torch
-chromadb
+chromadb==0.4.15
 docling
 starlette
 einops
