@@ -1,6 +1,6 @@
 """
-Clean ChromaDB client wrapper with complete telemetry disable.
-Aggressively disables ChromaDB's internal telemetry system.
+ChromaDB client wrapper with aggressive telemetry bypass for version 0.5.5.
+Completely disables ChromaDB's internal telemetry system.
 """
 
 import os
@@ -9,49 +9,56 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-# Completely disable telemetry at the system level
+# Set all possible telemetry environment variables
 os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_SERVER_TELEMETRY"] = "FALSE"
 os.environ["CHROMA_CLIENT_TELEMETRY"] = "FALSE"
+os.environ["CHROMA_DISABLE_TELEMETRY"] = "TRUE"
 
-# Aggressive telemetry bypass - patch before importing chromadb
-class NoOpTelemetry:
-    """Complete no-op telemetry replacement."""
+# Create a complete telemetry bypass
+class TelemetryBypass:
+    """Complete telemetry bypass for ChromaDB 0.5.5."""
+    
     def __init__(self, *args, **kwargs):
         pass
     
     def capture(self, *args, **kwargs):
+        """Handle any telemetry capture calls."""
         pass
     
     def __getattr__(self, name):
+        """Handle any other telemetry methods."""
         return lambda *args, **kwargs: None
 
-# Patch all possible telemetry modules before importing chromadb
-def disable_chroma_telemetry():
-    """Completely disable ChromaDB telemetry."""
-    # Create mock telemetry modules
-    mock_telemetry = type(sys)('chromadb.telemetry')
-    mock_telemetry.TelemetryClient = NoOpTelemetry
-    mock_telemetry.telemetry_client = NoOpTelemetry()
+# Aggressive module patching before importing chromadb
+def disable_chromadb_telemetry():
+    """Completely disable ChromaDB telemetry at the module level."""
     
-    # Patch all possible telemetry paths
-    telemetry_paths = [
+    # Create a mock telemetry module
+    mock_telemetry = type(sys)('chromadb.telemetry')
+    mock_telemetry.TelemetryClient = TelemetryBypass
+    mock_telemetry.telemetry_client = TelemetryBypass()
+    mock_telemetry.Telemetry = TelemetryBypass
+    
+    # Patch all possible telemetry module paths
+    telemetry_modules = [
         'chromadb.telemetry',
         'chromadb.telemetry.telemetry',
         'chromadb.telemetry.client',
         'chromadb.telemetry.events',
         'chromadb.telemetry.telemetry_client',
+        'chromadb.telemetry.telemetry_client',
     ]
     
-    for path in telemetry_paths:
+    for module_name in telemetry_modules:
         try:
-            sys.modules[path] = mock_telemetry
+            sys.modules[module_name] = mock_telemetry
         except:
             pass
 
-# Disable telemetry before importing chromadb
-disable_chroma_telemetry()
+# Apply telemetry bypass before any ChromaDB imports
+disable_chromadb_telemetry()
 
 # Now import chromadb
 import chromadb
@@ -89,18 +96,24 @@ def get_chroma_client() -> chromadb.Client:
             settings=settings
         )
         
-        # Additional telemetry disable on client
+        # Apply telemetry bypass to the client instance
         try:
-            # Disable telemetry on client instance
+            # Replace telemetry client with our bypass
             if hasattr(client, '_telemetry_client'):
-                client._telemetry_client = NoOpTelemetry()
+                client._telemetry_client = TelemetryBypass()
             
-            # Disable telemetry on internal client
+            # Also check for internal client telemetry
             if hasattr(client, '_client') and hasattr(client._client, 'telemetry_client'):
-                client._client.telemetry_client = NoOpTelemetry()
-                
+                client._client.telemetry_client = TelemetryBypass()
+            
+            # Disable telemetry on any other attributes
+            for attr_name in dir(client):
+                attr = getattr(client, attr_name, None)
+                if hasattr(attr, 'telemetry_client'):
+                    setattr(attr, 'telemetry_client', TelemetryBypass())
+                    
         except Exception as e:
-            logger.debug(f"Telemetry disable completed: {e}")
+            logger.debug(f"Telemetry bypass applied: {e}")
         
         return client
 
