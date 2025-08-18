@@ -30,7 +30,7 @@ def _synthesize_answer(question: str, contexts: List[str]) -> str:
     return header + body
 
 
-def query_knowledgebase(x_api_key: str, question: str, top_k: int = 5) -> QueryResponse:
+def query_knowledgebase(x_api_key: str, question: str, top_k: int = 5, index_id: Optional[str] = None) -> QueryResponse:
     client = _client()
     user_key = str(abs(hash(x_api_key)))[:10]
     user_prefix = os.environ.get("COLLECTION_PREFIX", "kb_") + user_key + "_"

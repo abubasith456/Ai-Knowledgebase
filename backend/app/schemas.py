@@ -18,6 +18,7 @@ class IngestRequest(BaseModel):
 	file_id: str
 	document_name: str
 	metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
+	index_id: Optional[str] = None
 
 
 class Chunk(BaseModel):
@@ -36,6 +37,7 @@ class IngestResponse(BaseModel):
 class QueryRequest(BaseModel):
 	question: str
 	top_k: Optional[int] = 5
+	index_id: Optional[str] = None
 
 
 class RetrievedContext(BaseModel):
@@ -56,7 +58,7 @@ class JobCreateResponse(BaseModel):
 
 class JobInfo(BaseModel):
 	id: str
-	type: str  # 'upload' | 'ingest'
+	type: str  # 'upload' | 'ingest' | 'index_creation'
 	status: str  # 'processing' | 'completed' | 'failed'
 	message: Optional[str] = None
 	file_id: Optional[str] = None
@@ -65,4 +67,30 @@ class JobInfo(BaseModel):
 	indexing_status: Optional[str] = None  # 'pending' | 'processing' | 'completed' | 'failed'
 	started_at: Optional[str] = None
 	finished_at: Optional[str] = None
+	progress: Optional[int] = None  # 0-100
+
+
+class Parser(BaseModel):
+	id: str
+	name: str
+	description: str
+	supported_formats: List[str]
+
+
+class Index(BaseModel):
+	id: str
+	name: str
+	created_at: str
+	document_count: int
+	parser_id: str
+
+
+class IndexCreateRequest(BaseModel):
+	name: str
+	parser_id: str
+
+
+class IndexCreateResponse(BaseModel):
+	index_id: str
+	job_id: Optional[str] = None
 

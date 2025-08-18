@@ -12,6 +12,7 @@ services:
       - MODEL_NAME=jinaai/jina-embeddings-v3-small
       - COLLECTION_PREFIX=kb_
       - LOG_LEVEL=info
+      - API_KEY_SECRET=${API_KEY_SECRET}
     volumes:
       - backend_data:/data
     depends_on:

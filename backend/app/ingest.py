@@ -68,7 +68,7 @@ def save_upload_temp(file: UploadFile, x_api_key: str) -> Tuple[str, str]:
 	return file_id, str(path)
 
 
-def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: Dict[str, Any]) -> IngestResponse:
+def ingest_document(x_api_key: str, file_id: str, document_name: str, metadata: Dict[str, Any], index_id: Optional[str] = None) -> IngestResponse:
 	# Locate file by pattern
 	user_dir = UPLOAD_DIR / (str(abs(hash(x_api_key)))[:8])
 	matches = list(user_dir.glob(f"{file_id}_*"))
