@@ -8,12 +8,12 @@ from loguru import logger
 import chromadb
 
 try:
-	from .schemas import IngestResponse, Chunk
+	from .schemas import IngestResponse, Chunk, ChunkMode
 	from .parsing import parse_pdf_with_docling
 	from .chunking import hybrid_chunk_document
 	from .embeddings import get_embedding_function
 except ImportError:
-	from schemas import IngestResponse, Chunk
+	from schemas import IngestResponse, Chunk, ChunkMode
 	from parsing import parse_pdf_with_docling
 	from chunking import hybrid_chunk_document
 	from embeddings import get_embedding_function
@@ -82,7 +82,15 @@ def save_upload_temp(file: UploadFile) -> Tuple[str, str]:
 	return file_id, str(path)
 
 
-def ingest_document(file_id: str, document_name: str, metadata: Dict[str, Any], index_id: Optional[str] = None) -> IngestResponse:
+def ingest_document(
+    file_id: str, 
+    document_name: str, 
+    metadata: Dict[str, Any], 
+    index_id: Optional[str] = None,
+    chunk_mode: ChunkMode = ChunkMode.AUTO,
+    chunk_size: Optional[int] = None,
+    chunk_overlap: Optional[int] = None
+) -> IngestResponse:
 	# Locate file by pattern
 	user_dir = UPLOAD_DIR / "default_user"
 	matches = list(user_dir.glob(f"{file_id}_*"))
@@ -94,12 +102,21 @@ def ingest_document(file_id: str, document_name: str, metadata: Dict[str, Any], 
 	logger.info("Parsing document with Docling/ OCR where needed")
 	pages_text = parse_pdf_with_docling(str(file_path))
 
-	# Chunk
-	logger.info("Chunking document with hybrid strategy")
+	# Chunk based on mode
+	logger.info(f"Chunking document with {chunk_mode} mode")
+	if chunk_mode == ChunkMode.AUTO:
+		# Use default values for auto mode
+		max_tokens = None
+		overlap_tokens = None
+	else:
+		# Use manual values
+		max_tokens = chunk_size
+		overlap_tokens = chunk_overlap
+	
 	chunks: List[Chunk] = hybrid_chunk_document(
 		pages_text=pages_text,
-		max_tokens=8000,
-		overlap_tokens=200,
+		max_tokens=max_tokens,
+		overlap_tokens=overlap_tokens,
 		metadata={"document_name": document_name, **(metadata or {})},
 	)
 

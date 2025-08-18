@@ -120,6 +120,9 @@ def ingest(payload: IngestRequest, background: BackgroundTasks):
 				document_name=payload.document_name,
 				metadata=payload.metadata or {},
 				index_id=payload.index_id,
+				chunk_mode=payload.chunk_mode,
+				chunk_size=payload.chunk_size,
+				chunk_overlap=payload.chunk_overlap,
 			)
 			complete_job(job_id, message="ingested", num_chunks=result.num_chunks)
 		except Exception as exc:
@@ -203,5 +206,78 @@ def get_index_details(index_id: str):
 	if not index:
 		raise HTTPException(status_code=404, detail="Index not found")
 	return index
+
+
+@app.get("/index/{index_id}/documents")
+def get_index_documents(index_id: str):
+	"""Get all documents in an index."""
+	try:
+		from .index import get_index
+		index = get_index(index_id)
+		if not index:
+			raise HTTPException(status_code=404, detail="Index not found")
+		
+		# Get documents from ChromaDB collection
+		import chromadb
+		from .ingest import _client, _collection_name
+		
+		client = _client()
+		collection_name = _collection_name("", index_id)
+		collection = client.get_collection(name=collection_name)
+		
+		# Get all documents and group by document_name
+		collection_info = collection.get()
+		documents = {}
+		
+		if collection_info.get('metadatas'):
+			for i, meta in enumerate(collection_info['metadatas']):
+				if isinstance(meta, dict) and 'document_name' in meta:
+					doc_name = meta['document_name']
+					if doc_name not in documents:
+						documents[doc_name] = {
+							'id': doc_name,  # Use document name as ID
+							'name': doc_name,
+							'created_at': '',  # ChromaDB doesn't store creation time
+							'num_chunks': 0,
+							'index_id': index_id
+						}
+					documents[doc_name]['num_chunks'] += 1
+		
+		return list(documents.values())
+	except Exception as exc:
+		logger.exception("Failed to get index documents")
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/check-document-name/{index_id}/{document_name}")
+def check_document_name(index_id: str, document_name: str):
+	"""Check if a document name already exists in an index."""
+	try:
+		from .index import get_index
+		index = get_index(index_id)
+		if not index:
+			raise HTTPException(status_code=404, detail="Index not found")
+		
+		# Check if document name exists in ChromaDB collection
+		import chromadb
+		from .ingest import _client, _collection_name
+		
+		client = _client()
+		collection_name = _collection_name("", index_id)
+		collection = client.get_collection(name=collection_name)
+		
+		# Query for documents with this name
+		results = collection.query(
+			query_texts=[""],  # Empty query to get all
+			n_results=1000,
+			where={"document_name": document_name}
+		)
+		
+		exists = len(results['ids'][0]) > 0 if results['ids'] else False
+		
+		return {"exists": exists, "document_name": document_name, "index_id": index_id}
+	except Exception as exc:
+		logger.exception("Failed to check document name")
+		raise HTTPException(status_code=500, detail=str(exc))
 
 
