@@ -14,8 +14,6 @@ services:
       - LOG_LEVEL=info
       - API_KEY_SECRET=${API_KEY_SECRET}
       - INDEX_DIR=/data/index
-      - ANONYMIZED_TELEMETRY=FALSE
-      - CHROMA_TELEMETRY=FALSE
     volumes:
       - backend_data:/data
     depends_on:
@@ -26,9 +24,6 @@ services:
     container_name: kb-chroma
     environment:
       - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-      - CHROMA_TELEMETRY=FALSE
-      - CHROMA_SERVER_TELEMETRY=FALSE
     volumes:
       - backend_data:/data
     ports:

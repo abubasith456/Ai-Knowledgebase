@@ -1,66 +1,21 @@
 """
-Production-level ChromaDB client wrapper that completely bypasses telemetry.
-Monkey-patches the telemetry system before any ChromaDB imports.
+Clean ChromaDB client wrapper without telemetry.
+Simple and direct ChromaDB client implementation.
 """
 
 import os
-import sys
 from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-# Force disable telemetry at the module level
-os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
-os.environ["CHROMA_TELEMETRY"] = "FALSE"
-os.environ["CHROMA_SERVER_TELEMETRY"] = "FALSE"
-
-# MONKEY PATCH: Disable telemetry before importing chromadb
-class MockTelemetryClient:
-    """Mock telemetry client that does nothing."""
-    def __init__(self, *args, **kwargs):
-        pass
-    
-    def capture(self, event_name, properties=None, user_id=None):
-        """Handle the new ChromaDB telemetry API signature."""
-        pass
-    
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
-
-# Create a comprehensive telemetry bypass
-def create_mock_telemetry_module():
-    """Create a mock telemetry module that does nothing."""
-    mock_module = type(sys)('chromadb.telemetry')
-    mock_module.TelemetryClient = MockTelemetryClient
-    
-    # Add any other telemetry-related classes that might exist
-    mock_module.Telemetry = MockTelemetryClient
-    mock_module.telemetry_client = MockTelemetryClient()
-    
-    return mock_module
-
-# Patch all possible telemetry module paths
-telemetry_paths = [
-    'chromadb.telemetry',
-    'chromadb.telemetry.telemetry',
-    'chromadb.telemetry.client',
-    'chromadb.telemetry.events',
-]
-
-for path in telemetry_paths:
-    try:
-        sys.modules[path] = create_mock_telemetry_module()
-    except:
-        pass
-
-# Now import chromadb after patching
+# Import chromadb directly
 import chromadb
 from chromadb.config import Settings
 
 def get_chroma_client() -> chromadb.Client:
     """
-    Get a ChromaDB client with telemetry completely disabled.
-    Production-level fix that bypasses telemetry entirely.
+    Get a ChromaDB client without any telemetry.
+    Simple and clean implementation.
     """
     host = os.environ.get("CHROMA_HOST")
     
@@ -77,9 +32,8 @@ def get_chroma_client() -> chromadb.Client:
         
         logger.info(f"Using local ChromaDB storage at: {data_dir}")
         
-        # Create settings with telemetry completely disabled
+        # Create settings without telemetry
         settings = Settings(
-            anonymized_telemetry=False,
             allow_reset=True,
             is_persistent=True
         )
@@ -90,35 +44,11 @@ def get_chroma_client() -> chromadb.Client:
             settings=settings
         )
         
-        # Comprehensive telemetry bypass for production
-        try:
-            # Disable telemetry on the client instance
-            if hasattr(client, '_client') and hasattr(client._client, 'telemetry_client'):
-                client._client.telemetry_client = MockTelemetryClient()
-            
-            # Disable telemetry on collection instances
-            if hasattr(client, '_telemetry_client'):
-                client._telemetry_client = MockTelemetryClient()
-            
-            # Disable telemetry on the client itself
-            if hasattr(client, 'telemetry_client'):
-                client.telemetry_client = MockTelemetryClient()
-            
-            # Disable telemetry on any internal components
-            for attr_name in dir(client):
-                attr = getattr(client, attr_name, None)
-                if hasattr(attr, 'telemetry_client'):
-                    setattr(attr, 'telemetry_client', MockTelemetryClient())
-                
-        except Exception as e:
-            logger.debug(f"Telemetry bypass completed: {e}")
-        
         return client
 
 def cleanup_incompatible_collections():
     """
     Clean up collections with incompatible embedding dimensions.
-    Production-level cleanup with proper error handling.
     """
     try:
         client = get_chroma_client()

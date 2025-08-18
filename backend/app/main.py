@@ -1,6 +1,5 @@
-# Disable ChromaDB telemetry globally
+# Import required modules
 import os
-os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
 
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
