@@ -1,0 +1,46 @@
+version: '3.9'
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kb-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_DATA_DIR=/data/chroma
+      - MODEL_NAME=jinaai/jina-embeddings-v3-small
+      - COLLECTION_PREFIX=kb_
+      - LOG_LEVEL=info
+    volumes:
+      - backend_data:/data
+    depends_on:
+      - chroma
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: kb-chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - backend_data:/data
+    ports:
+      - "8001:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kb-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  backend_data:
+    driver: local
+
