@@ -6,18 +6,39 @@ Test script for clean ChromaDB client (version 0.4.22).
 import os
 import sys
 
+# Add the current directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 print("🧪 Testing Clean ChromaDB Client (v0.4.22)...")
 print("=" * 50)
 
 try:
-    # Import the clean chroma client
-    from app.chroma_client_clean import get_chroma_client
+    # Import chromadb directly
+    import chromadb
+    from chromadb.config import Settings
+    from pathlib import Path
+    from loguru import logger
     
-    print("✅ Successfully imported clean chroma_client module")
+    print("✅ Successfully imported ChromaDB 0.4.22")
     
-    # Test creating a client
+    # Test creating a client directly
     print("🔧 Creating ChromaDB client...")
-    client = get_chroma_client()
+    
+    # Create settings
+    settings = Settings(
+        allow_reset=True,
+        is_persistent=True
+    )
+    
+    # Create client
+    data_dir = Path("./data/chroma")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    client = chromadb.PersistentClient(
+        path=str(data_dir),
+        settings=settings
+    )
+    
     print("✅ ChromaDB client created successfully")
     
     # Test basic operations
