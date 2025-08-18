@@ -1,7 +1,5 @@
 # Disable ChromaDB telemetry globally
 import os
-os.environ["ANONYMIZED_TELEMETRY"] = "FALSE"
-
 import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
@@ -15,11 +13,13 @@ try:
 	from .parsing import parse_pdf_with_docling
 	from .chunking import hybrid_chunk_document
 	from .embeddings import get_embedding_function
+	from .chroma_client import get_chroma_client
 except ImportError:
 	from schemas import IngestResponse, Chunk, ChunkMode
 	from parsing import parse_pdf_with_docling
 	from chunking import hybrid_chunk_document
 	from embeddings import get_embedding_function
+	from chroma_client import get_chroma_client
 
 
 # Use a more reliable path for uploads
@@ -34,44 +34,9 @@ except (OSError, PermissionError):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _cleanup_old_collections():
-	"""Clean up old collections that have incompatible embedding dimensions."""
-	try:
-		client = _client()
-		collections = client.list_collections()
-		
-		for collection in collections:
-			try:
-				# Try to get collection info to check if it's compatible
-				collection.get()
-			except Exception as e:
-				if "Embedding dimension" in str(e):
-					logger.info(f"Deleting incompatible collection: {collection.name}")
-					client.delete_collection(name=collection.name)
-				else:
-					logger.warning(f"Error checking collection {collection.name}: {e}")
-	except Exception as e:
-		logger.warning(f"Failed to cleanup old collections: {e}")
-
-
 def _client() -> chromadb.Client:
-	host = os.environ.get("CHROMA_HOST")
-	if host:
-		return chromadb.HttpClient(host=host, port=int(os.environ.get("CHROMA_PORT", "8000")))
-	else:
-		# Local persistent client for non-Docker/local dev
-		from chromadb.config import Settings
-		DATA_DIR.mkdir(parents=True, exist_ok=True)
-		return chromadb.PersistentClient(
-			path=str(DATA_DIR),
-			settings=Settings(
-				anonymized_telemetry=False,
-				allow_reset=True
-			)
-		)
-
-# Cleanup old collections after client function is defined
-_cleanup_old_collections()
+	"""Get ChromaDB client with telemetry disabled."""
+	return get_chroma_client()
 
 
 def _sanitize_name(name: str) -> str:

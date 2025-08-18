@@ -9,27 +9,16 @@ import chromadb
 try:
     from .embeddings import get_embedding_function
     from .schemas import QueryResponse, RetrievedContext
+    from .chroma_client import get_chroma_client
 except ImportError:
     from embeddings import get_embedding_function
     from schemas import QueryResponse, RetrievedContext
+    from chroma_client import get_chroma_client
 
 
 def _client() -> chromadb.Client:
-    host = os.environ.get("CHROMA_HOST")
-    if host:
-        return chromadb.HttpClient(host=host, port=int(os.environ.get("CHROMA_PORT", "8000")))
-    else:
-        from pathlib import Path
-        from chromadb.config import Settings
-        data_dir = Path(os.environ.get("CHROMA_DATA_DIR") or (Path.cwd() / "data" / "chroma"))
-        data_dir.mkdir(parents=True, exist_ok=True)
-        return chromadb.PersistentClient(
-            path=str(data_dir),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
-            )
-        )
+    """Get ChromaDB client with telemetry disabled."""
+    return get_chroma_client()
 
  
 

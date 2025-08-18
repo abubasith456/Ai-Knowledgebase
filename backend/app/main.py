@@ -145,9 +145,9 @@ def query(payload: QueryRequest):
 		if not payload.index_id:
 			# Get all collections and search across them
 			import chromadb
-			from .ingest import _client
+			from .chroma_client import get_chroma_client
 			
-			client = _client()
+			client = get_chroma_client()
 			collections = client.list_collections()
 			
 			all_contexts = []
