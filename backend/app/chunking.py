@@ -3,8 +3,13 @@ from __future__ import annotations
 from typing import Dict, Any, List
 import tiktoken
 from loguru import logger
-from .schemas import Chunk
 import uuid
+from dataclasses import dataclass
+@dataclass
+class Chunk:
+    id: str
+    text: str
+    metadata: Dict[str, Any]
 
 
 def _tokenizer():
