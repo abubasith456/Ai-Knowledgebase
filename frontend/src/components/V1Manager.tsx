@@ -59,6 +59,7 @@ export default function V1Manager() {
 
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [selectedJob, setSelectedJob] = useState<string>('')
+  const [selectedJobsForIndex, setSelectedJobsForIndex] = useState<string[]>([])
 
   const [indexes, setIndexes] = useState<IndexSummary[]>([])
   const [selectedIndex, setSelectedIndex] = useState<string>('')
@@ -66,10 +67,6 @@ export default function V1Manager() {
 
   const [query, setQuery] = useState<string>('')
   const [answers, setAnswers] = useState<QueryAnswer[]>([])
-
-  const [quickTestFile, setQuickTestFile] = useState<File | null>(null)
-  const [quickTestQuery, setQuickTestQuery] = useState<string>('What is the policy?')
-  const [quickTestAnswers, setQuickTestAnswers] = useState<QueryAnswer[]>([])
 
   const [activeTab, setActiveTab] = useState<TabKey>('projects')
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false)
@@ -93,6 +90,7 @@ export default function V1Manager() {
       setJobs([])
       setIndexes([])
       setSelectedJob('')
+      setSelectedJobsForIndex([])
       setSelectedIndex('')
       setAnswers([])
     }
@@ -139,9 +137,12 @@ export default function V1Manager() {
     await loadJobs(selectedProject)
   }
 
-  async function ingest() {
-    if (!selectedProject || !selectedIndex || !selectedJob) return
-    await http.post(`/v1/projects/${selectedProject}/indexes/${selectedIndex}/ingest`, { jobId: selectedJob })
+  async function ingestSelectedJobs() {
+    if (!selectedProject || !selectedIndex || selectedJobsForIndex.length === 0) return
+    // ingest each selected job
+    for (const jobId of selectedJobsForIndex) {
+      await http.post(`/v1/projects/${selectedProject}/indexes/${selectedIndex}/ingest`, { jobId })
+    }
     await loadJobs(selectedProject)
   }
 
@@ -151,21 +152,16 @@ export default function V1Manager() {
     setAnswers(res.data?.answers || [])
   }
 
-  async function doQuickTest() {
-    if (!quickTestFile) return
-    const form = new FormData()
-    form.append('file', quickTestFile)
-    form.append('query', quickTestQuery)
-    const res = await http.post('/v1/query/test', form)
-    setQuickTestAnswers(res.data?.answers || [])
-  }
-
   useEffect(() => { loadProjects() }, [])
 
   useEffect(() => {
     if (selectedProject) {
       loadJobs(selectedProject)
       loadIndexes(selectedProject)
+      setSelectedJob('')
+      setSelectedJobsForIndex([])
+      setSelectedIndex('')
+      setAnswers([])
     }
   }, [selectedProject])
 
@@ -183,17 +179,26 @@ export default function V1Manager() {
   }
 
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 flex-col md:flex-row">
       {/* Sidebar */}
-      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} transition-all duration-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 h-[calc(100vh-8rem)] sticky top-6`}> 
-        <div className="flex items-center justify-between mb-4">
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} transition-all duration-200 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 h-auto md:h-[calc(100vh-8rem)] md:sticky md:top-6`}> 
+        <div className="hidden md:block mb-2">
           {!sidebarCollapsed && <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Navigation</div>}
+        </div>
+
+        <div className="space-y-2">
+          <SidebarItem tab="projects" label="Projects" icon={<IconProjects />} />
+          <SidebarItem tab="parser" label="Parser" icon={<IconParser />} />
+          <SidebarItem tab="index" label="Index" icon={<IconIndex />} />
+          <SidebarItem tab="query" label="Query" icon={<IconQuery />} />
+        </div>
+
+        <div className="mt-4 md:mt-auto flex justify-center">
           <button
             className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             title={sidebarCollapsed ? 'Expand' : 'Collapse'}
           >
-            {/* hybrid toggle icon */}
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {sidebarCollapsed ? (
                 <path d="M9 18l6-6-6-6"/>
@@ -202,13 +207,6 @@ export default function V1Manager() {
               )}
             </svg>
           </button>
-        </div>
-
-        <div className="space-y-2">
-          <SidebarItem tab="projects" label="Projects" icon={<IconProjects />} />
-          <SidebarItem tab="parser" label="Parser" icon={<IconParser />} />
-          <SidebarItem tab="index" label="Index" icon={<IconIndex />} />
-          <SidebarItem tab="query" label="Query" icon={<IconQuery />} />
         </div>
       </aside>
 
@@ -252,8 +250,10 @@ export default function V1Manager() {
             onCreateIndex={createIndex}
             onDeleteIndex={deleteIndex}
             onSelectIndex={setSelectedIndex}
-            onIngest={ingest}
-            selectedJob={selectedJob}
+            onIngestSelected={ingestSelectedJobs}
+            jobs={jobs}
+            selectedJobs={selectedJobsForIndex}
+            setSelectedJobs={setSelectedJobsForIndex}
           />
         )}
 
@@ -265,12 +265,6 @@ export default function V1Manager() {
             setQuery={setQuery}
             answers={answers}
             onAsk={doQuery}
-            quickTestFile={quickTestFile}
-            setQuickTestFile={setQuickTestFile}
-            quickTestQuery={quickTestQuery}
-            setQuickTestQuery={setQuickTestQuery}
-            quickTestAnswers={quickTestAnswers}
-            onQuickTest={doQuickTest}
           />
         )}
       </div>
@@ -358,7 +352,7 @@ function ParserPanel({ selectedProject, jobs, selectedJob, onUpload, onSelectJob
   )
 }
 
-function IndexPanel({ selectedProject, indexes, selectedIndex, newIndexName, setNewIndexName, onCreateIndex, onDeleteIndex, onSelectIndex, onIngest, selectedJob } : {
+function IndexPanel({ selectedProject, indexes, selectedIndex, newIndexName, setNewIndexName, onCreateIndex, onDeleteIndex, onSelectIndex, onIngestSelected, jobs, selectedJobs, setSelectedJobs } : {
   selectedProject: string
   indexes: IndexSummary[]
   selectedIndex: string
@@ -367,10 +361,18 @@ function IndexPanel({ selectedProject, indexes, selectedIndex, newIndexName, set
   onCreateIndex: () => Promise<void>
   onDeleteIndex: (id: string) => Promise<void>
   onSelectIndex: (id: string) => void
-  onIngest: () => Promise<void>
-  selectedJob: string
+  onIngestSelected: () => Promise<void>
+  jobs: JobSummary[]
+  selectedJobs: string[]
+  setSelectedJobs: (ids: string[]) => void
 }) {
   if (!selectedProject) return <div className="text-gray-500">Select a project first</div>
+
+  function toggleJob(id: string) {
+    if (selectedJobs.includes(id)) setSelectedJobs(selectedJobs.filter(j => j !== id))
+    else setSelectedJobs([...selectedJobs, id])
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -397,8 +399,23 @@ function IndexPanel({ selectedProject, indexes, selectedIndex, newIndexName, set
             </div>
           </div>
           <div className="space-y-3">
+            <div>
+              <div className="text-sm font-medium mb-2">Select Jobs to Ingest</div>
+              <div className="border rounded p-3 max-h-48 overflow-auto space-y-1">
+                {jobs.length === 0 ? (
+                  <div className="text-gray-500">No jobs</div>
+                ) : (
+                  jobs.map(j => (
+                    <label key={j.jobId} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={selectedJobs.includes(j.jobId)} onChange={() => toggleJob(j.jobId)} />
+                      <span>{j.filename} ({j.status})</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
             <div className="flex gap-2">
-              <Button onClick={onIngest} disabled={!selectedJob || !selectedIndex}>Ingest Selected Job</Button>
+              <Button onClick={onIngestSelected} disabled={selectedJobs.length === 0 || !selectedIndex}>Ingest Selected Jobs</Button>
             </div>
           </div>
         </div>
@@ -407,19 +424,13 @@ function IndexPanel({ selectedProject, indexes, selectedIndex, newIndexName, set
   )
 }
 
-function QueryPanel({ selectedProject, selectedIndex, query, setQuery, answers, onAsk, quickTestFile, setQuickTestFile, quickTestQuery, setQuickTestQuery, quickTestAnswers, onQuickTest } : {
+function QueryPanel({ selectedProject, selectedIndex, query, setQuery, answers, onAsk } : {
   selectedProject: string
   selectedIndex: string
   query: string
   setQuery: (v: string) => void
   answers: QueryAnswer[]
   onAsk: () => Promise<void>
-  quickTestFile: File | null
-  setQuickTestFile: (f: File | null) => void
-  quickTestQuery: string
-  setQuickTestQuery: (v: string) => void
-  quickTestAnswers: QueryAnswer[]
-  onQuickTest: () => Promise<void>
 }) {
   return (
     <div className="space-y-6">
@@ -450,28 +461,6 @@ function QueryPanel({ selectedProject, selectedIndex, query, setQuery, answers, 
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Test</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <input type="file" onChange={e => setQuickTestFile(e.target.files ? e.target.files[0] : null)} />
-              <input className="border rounded px-3 py-2 flex-1" placeholder="Query" value={quickTestQuery} onChange={e => setQuickTestQuery(e.target.value)} />
-              <Button onClick={onQuickTest} disabled={!quickTestFile}>Run</Button>
-            </div>
-            <div className="space-y-2">
-              {quickTestAnswers.map((a, i) => (
-                <div key={i} className="border rounded p-3">
-                  <div className="whitespace-pre-wrap text-sm">{a.text}</div>
-                </div>
-              ))}
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
