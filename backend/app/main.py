@@ -4,7 +4,7 @@ from starlette.responses import JSONResponse
 from loguru import logger
 from typing import List
 try:
-    from .schemas import (
+	from .schemas import (
 		APIKeyResponse,
 		APIKeyRegisterRequest,
 		APIKeyValidateResponse,
@@ -16,13 +16,13 @@ try:
 		Index,
 		IndexCreateRequest,
 		IndexCreateResponse,
-    )
-    from .auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
-    from .ingest import save_upload_temp, ingest_document
-    from .query import query_knowledgebase
-    from .index import get_parsers, get_parser, create_index, get_index, get_all_indices
+	)
+	from .auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
+	from .ingest import save_upload_temp, ingest_document
+	from .query import query_knowledgebase
+	from .index import get_parsers, get_parser, create_index, get_index, get_all_indices
 except ImportError:
-    from schemas import (
+	from schemas import (
 		APIKeyResponse,
 		APIKeyRegisterRequest,
 		APIKeyValidateResponse,
@@ -34,14 +34,18 @@ except ImportError:
 		Index,
 		IndexCreateRequest,
 		IndexCreateResponse,
-    )
-    from auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
-    from ingest import save_upload_temp, ingest_document
-    from query import query_knowledgebase
-    from index import get_parsers, get_parser, create_index, get_index, get_all_indices
+	)
+	from auth import generate_api_key_server, register_api_key, require_api_key, validate_api_key
+	from ingest import save_upload_temp, ingest_document
+	from query import query_knowledgebase
+	from index import get_parsers, get_parser, create_index, get_index, get_all_indices
 
 from fastapi import BackgroundTasks
 from .jobs import create_job, complete_job, fail_job, get_job, set_indexing_status
+try:
+	from .v1_router import router as v1_router
+except ImportError:
+	from v1_router import router as v1_router
 
 app = FastAPI(title="Doc KB", version="1.0.0")
 
@@ -52,6 +56,9 @@ app.add_middleware(
 	allow_methods=["*"],
 	allow_headers=["*"],
 )
+
+# Mount versioned API
+app.include_router(v1_router)
 
 
 @app.get("/health")
@@ -203,5 +210,3 @@ def get_index_details(index_id: str):
 	if not index:
 		raise HTTPException(status_code=404, detail="Index not found")
 	return index
-
-

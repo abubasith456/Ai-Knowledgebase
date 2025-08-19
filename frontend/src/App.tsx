@@ -7,6 +7,7 @@ import { UploadArea } from './components/UploadArea'
 import { ProgressBar } from './components/ProgressBar'
 import { ThemeToggle } from './components/ThemeToggle'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './components/Tabs'
+import V1Manager from './components/V1Manager'
 
 type IngestLog = { ts: string, level: 'info'|'error', message: string }
 
@@ -355,6 +356,7 @@ ${jsCode}`)
             <TabsTrigger value="parser">Upload</TabsTrigger>
             <TabsTrigger value="indexing">Index</TabsTrigger>
             <TabsTrigger value="query">Query & Test</TabsTrigger>
+            <TabsTrigger value="v1">v1 API</TabsTrigger>
           </TabsList>
 
           <TabsContent value="parser">
@@ -647,6 +649,10 @@ ${jsCode}`)
                 </Card>
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="v1">
+            <V1Manager />
           </TabsContent>
         </Tabs>
       </div>
