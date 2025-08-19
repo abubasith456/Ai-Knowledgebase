@@ -6,7 +6,7 @@ import { Badge } from './Badge'
 
 type Project = { projectId: string, name: string, description?: string }
 type ProjectSummary = { projectId: string, name: string }
-type FileSummary = { fileId: string, filename: string }
+type JobSummary = { jobId: string, filename: string, status: string }
 type IndexSummary = { indexId: string, name: string }
 type QueryAnswer = { text: string, source?: string }
 
@@ -16,8 +16,8 @@ export default function V1Manager() {
   const [newProjectName, setNewProjectName] = useState<string>('')
   const [newProjectDesc, setNewProjectDesc] = useState<string>('')
 
-  const [files, setFiles] = useState<FileSummary[]>([])
-  const [selectedFile, setSelectedFile] = useState<string>('')
+  const [jobs, setJobs] = useState<JobSummary[]>([])
+  const [selectedJob, setSelectedJob] = useState<string>('')
 
   const [indexes, setIndexes] = useState<IndexSummary[]>([])
   const [selectedIndex, setSelectedIndex] = useState<string>('')
@@ -48,28 +48,28 @@ export default function V1Manager() {
     await http.delete(`/v1/projects/${projectId}`)
     if (selectedProject === projectId) {
       setSelectedProject('')
-      setFiles([])
+      setJobs([])
       setIndexes([])
-      setSelectedFile('')
+      setSelectedJob('')
       setSelectedIndex('')
     }
     await loadProjects()
   }
 
-  async function loadFiles(projectId: string) {
+  async function loadJobs(projectId: string) {
     if (!projectId) return
-    const res = await http.get(`/v1/projects/${projectId}/files`)
-    setFiles(res.data || [])
+    const res = await http.get(`/v1/projects/${projectId}/jobs`)
+    setJobs(res.data || [])
   }
 
   async function uploadFile(file: File) {
     if (!selectedProject) return
     const form = new FormData()
     form.append('file', file)
-    await http.post(`/v1/projects/${selectedProject}/files`, form, {
+    await http.post(`/v1/projects/${selectedProject}/jobs`, form, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
-    await loadFiles(selectedProject)
+    await loadJobs(selectedProject)
   }
 
   async function loadIndexes(projectId: string) {
@@ -92,10 +92,16 @@ export default function V1Manager() {
     if (selectedIndex === idx) setSelectedIndex('')
   }
 
+  async function parseJob() {
+    if (!selectedProject || !selectedJob) return
+    await http.post(`/v1/projects/${selectedProject}/jobs/${selectedJob}/parse`)
+    await loadJobs(selectedProject)
+  }
+
   async function ingest() {
-    if (!selectedProject || !selectedIndex || !selectedFile) return
-    await http.post(`/v1/projects/${selectedProject}/indexes/${selectedIndex}/ingest`, { fileId: selectedFile })
-    // no-op; could show a toast
+    if (!selectedProject || !selectedIndex || !selectedJob) return
+    await http.post(`/v1/projects/${selectedProject}/indexes/${selectedIndex}/ingest`, { jobId: selectedJob })
+    await loadJobs(selectedProject)
   }
 
   async function doQuery() {
@@ -119,7 +125,7 @@ export default function V1Manager() {
 
   useEffect(() => {
     if (selectedProject) {
-      loadFiles(selectedProject)
+      loadJobs(selectedProject)
       loadIndexes(selectedProject)
     }
   }, [selectedProject])
@@ -165,7 +171,7 @@ export default function V1Manager() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Files</CardTitle>
+          <CardTitle>Jobs</CardTitle>
         </CardHeader>
         <CardContent>
           {!selectedProject ? (
@@ -176,11 +182,11 @@ export default function V1Manager() {
                 <input type="file" onChange={e => e.target.files && uploadFile(e.target.files[0])} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2">Select File</label>
-                <select className="border rounded px-3 py-2 w-full" value={selectedFile} onChange={e => setSelectedFile(e.target.value)}>
-                  <option value="">Select a file...</option>
-                  {files.map(f => (
-                    <option key={f.fileId} value={f.fileId}>{f.filename}</option>
+                <label className="block text-sm font-medium mb-2">Select Job</label>
+                <select className="border rounded px-3 py-2 w-full" value={selectedJob} onChange={e => setSelectedJob(e.target.value)}>
+                  <option value="">Select a job...</option>
+                  {jobs.map(j => (
+                    <option key={j.jobId} value={j.jobId}>{j.filename} ({j.status})</option>
                   ))}
                 </select>
               </div>
@@ -218,7 +224,8 @@ export default function V1Manager() {
               </div>
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  <Button onClick={ingest} disabled={!selectedFile || !selectedIndex}>Ingest Selected File</Button>
+                  <Button onClick={parseJob} disabled={!selectedJob}>Parse Job</Button>
+                  <Button onClick={ingest} disabled={!selectedJob || !selectedIndex}>Ingest Selected Job</Button>
                 </div>
               </div>
             </div>

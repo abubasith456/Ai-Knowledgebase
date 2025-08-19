@@ -28,21 +28,26 @@ class ProjectSummary(BaseModel):
 	name: str
 
 
-class FileUploadResponse(BaseModel):
-	fileId: str
+class JobSummary(BaseModel):
+	jobId: str
+	filename: str
+	status: str
+
+
+class JobDetails(BaseModel):
+	jobId: str
 	projectId: str
-	status: str
-
-
-class FileSummary(BaseModel):
-	fileId: str
 	filename: str
-
-
-class FileDetails(BaseModel):
-	fileId: str
-	filename: str
+	filetype: Optional[str] = None
+	filesize: Optional[int] = None
 	status: str
+	parsingStatus: Optional[str] = None
+	pages: Optional[int] = None
+	indexingStatus: Optional[str] = None
+	indexId: Optional[str] = None
+	chunks: Optional[int] = None
+	createdAt: Optional[str] = None
+	updatedAt: Optional[str] = None
 
 
 class IndexCreate(BaseModel):
@@ -71,12 +76,12 @@ class IndexDeleteResponse(BaseModel):
 
 
 class IngestIntoIndexRequest(BaseModel):
-	fileId: str
+	jobId: str
 
 
 class IngestIntoIndexResponse(BaseModel):
 	status: str
-	fileId: str
+	jobId: str
 	indexId: str
 	chunks: int
 
@@ -101,9 +106,9 @@ class DeleteProjectResponse(BaseModel):
 	projectId: str
 
 
-class DeleteFileResponse(BaseModel):
+class DeleteJobResponse(BaseModel):
 	status: str
-	fileId: str
+	jobId: str
 
 
 class QuickTestResponse(BaseModel):
