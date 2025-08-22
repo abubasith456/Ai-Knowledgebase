@@ -33,3 +33,34 @@ OpenAPI docs at `http://localhost:8000/docs` after services are up.
 - Chroma runs as a service with persistent volume.
 
 # Ai-Knowledgebase
+
+### v1 API (Production-ready, versioned)
+
+Base URL: `http://localhost:8000/v1`
+
+- Projects
+  - `POST /projects` body `{ name, description? }` → `{ projectId, name }`
+  - `GET /projects` → `[{ projectId, name }]`
+  - `GET /projects/{projectId}` → `{ projectId, name, description }`
+  - `PUT /projects/{projectId}` body `{ name, description? }` → `{ projectId, name }`
+  - `DELETE /projects/{projectId}` → `{ status: "deleted", projectId }`
+
+- Files
+  - `POST /projects/{projectId}/files` form-data `file=@doc.pdf` → `{ fileId, projectId, status: "uploaded" }`
+  - `GET /projects/{projectId}/files` → `[{ fileId, filename }]`
+  - `GET /projects/{projectId}/files/{fileId}` → `{ fileId, filename, status }`
+  - `DELETE /projects/{projectId}/files/{fileId}` → `{ status: "deleted", fileId }`
+
+- Indexes
+  - `POST /projects/{projectId}/indexes` body `{ name, embeddingModel? }` → `{ indexId, projectId, name }`
+  - `GET /projects/{projectId}/indexes` → `[{ indexId, name }]`
+  - `GET /projects/{projectId}/indexes/{indexId}` → `{ indexId, projectId, name }`
+  - `PUT /projects/{projectId}/indexes/{indexId}` body `{ name }` → `{ indexId, name }`
+  - `DELETE /projects/{projectId}/indexes/{indexId}` → `{ status: "deleted", indexId }`
+  - `POST /projects/{projectId}/indexes/{indexId}/ingest` body `{ fileId }` → `{ status: "indexed", fileId, indexId, chunks }`
+
+- Querying
+  - `POST /projects/{projectId}/indexes/{indexId}/query` body `{ query, top_k }` → `{ query, answers: [{ text, source }] }`
+
+- Testing
+  - `POST /query/test` form-data `file=@doc.pdf`, `query=...` → `{ answers: [{ text }] }`

@@ -14,6 +14,8 @@ services:
       - LOG_LEVEL=info
       - API_KEY_SECRET=${API_KEY_SECRET}
       - INDEX_DIR=/data/index
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
     volumes:
       - backend_data:/data
     depends_on:
