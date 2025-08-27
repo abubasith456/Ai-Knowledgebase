@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { projectsApi, documentsApi, indexesApi, queryApi } from '../services/api';
-import type { Project, Document, Index, QueryRequest, QueryResponse } from '../services/api';
+import { projectsApi, documentsApi, indexesApi } from '../services/api/projects';
+import { queryApi } from '../services/api/query';
+import type { Project, Document, Index } from '../services/api/projects';
+import type { QueryRequest, QueryResponse } from '../services/api/query';
 
 // State types
 interface AppState {
