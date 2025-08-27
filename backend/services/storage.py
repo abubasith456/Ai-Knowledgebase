@@ -99,32 +99,3 @@ class JSONStore(Generic[T]):
                 self.list_path.write_text(json.dumps(data, indent=2))
         except (json.JSONDecodeError, FileNotFoundError):
             pass
-
-class MarkdownStorage:
-    def __init__(self, base_path: str = "backend/markdown"):
-        self.base_path = Path(base_path)
-        self.base_path.mkdir(parents=True, exist_ok=True)
-
-    def save_markdown(self, project_id: str, doc_id: str, content: str) -> str:
-        """Save markdown content and return file path"""
-        project_dir = self.base_path / project_id
-        project_dir.mkdir(exist_ok=True)
-        
-        file_path = project_dir / f"{doc_id}.md"
-        file_path.write_text(content, encoding='utf-8')
-        return str(file_path)
-
-    def get_markdown(self, project_id: str, doc_id: str) -> Optional[str]:
-        """Retrieve markdown content"""
-        file_path = self.base_path / project_id / f"{doc_id}.md"
-        if file_path.exists():
-            return file_path.read_text(encoding='utf-8')
-        return None
-
-    def delete_markdown(self, project_id: str, doc_id: str) -> bool:
-        """Delete markdown file"""
-        file_path = self.base_path / project_id / f"{doc_id}.md"
-        if file_path.exists():
-            file_path.unlink()
-            return True
-        return False

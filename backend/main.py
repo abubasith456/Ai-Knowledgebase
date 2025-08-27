@@ -18,9 +18,10 @@ from services.schemas import (
     QueryRequest,
     QueryResponse,
 )
-from services.storage import JSONStore, MarkdownStorage
+from services.storage import JSONStore
 from services.parsing import parse_with_docling, build_embeddings_from_chunks
 from services.chroma_store import add_documents, query_documents
+from services.dropbox_storage import upload_and_share_markdown
 
 # Ensure directories
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -37,9 +38,6 @@ indexes_store = JSONStore[dict](
     kv_path=f"{settings.STORE_DIR}/indexes.json",
     list_path=f"{settings.STORE_DIR}/indexes_by_project.json",
 )
-
-# Markdown storage
-markdown_storage = MarkdownStorage()
 
 app = FastAPI(title="KB Console Backend", version="0.2.0")
 
@@ -174,9 +172,12 @@ def _parse_and_store(doc_id: str):
         path = _file_path(d["id"], d["filename"])
         full_text, chunks = parse_with_docling(path)
         
-        # Save parsed Markdown to local storage
-        md_text = "\n\n".join(chunks)
-        markdown_storage.save_markdown(d["project_id"], d["id"], md_text)
+        # Upload parsed Markdown to Dropbox
+        try:
+            md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
+        except Exception as e:
+            print(f"Dropbox upload failed: {e}")
+            md_url = None  # Dropbox optional; backend continues
         
         # Embed chunks to Chroma
         embeddings = build_embeddings_from_chunks(chunks)
@@ -191,9 +192,10 @@ def _parse_and_store(doc_id: str):
             documents=chunks,
         )
         d["status"] = "completed"
-        d["md_url"] = f"local://{d['project_id']}/{d['id']}.md"
+        d["md_url"] = md_url
         docs_store.set(doc_id, d)
-    except Exception:
+    except Exception as e:
+        print(f"Parsing failed: {e}")
         # Reset to pending to allow retry
         d["status"] = "pending"
         docs_store.set(doc_id, d)

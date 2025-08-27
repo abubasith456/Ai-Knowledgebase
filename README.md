@@ -4,13 +4,20 @@ A modern knowledge base management system with document parsing, indexing, and s
 
 ## 🚀 Features
 
-- **Document Management**: Upload and parse PDF, DOCX, MD, TXT files using Docling
+- **Document Management**: Upload and parse PDF, DOCX, MD, TXT files using Docling DocumentConverter
 - **Project Organization**: Create and manage multiple knowledge base projects
 - **Smart Indexing**: Build searchable indexes from parsed documents
 - **Semantic Search**: Query your knowledge base using ChromaDB vector search
+- **Cloud Storage**: Automatically store parsed markdown files on Dropbox
 - **Modern UI**: Clean, responsive interface built with React 19 and Tailwind CSS
 
 ## 📦 Getting Started
+
+### Prerequisites
+
+- **uv**: Fast Python package installer and resolver
+- **Node.js**: For frontend development
+- **Dropbox Account**: For document storage (optional but recommended)
 
 ### Backend Setup
 
@@ -19,7 +26,18 @@ A modern knowledge base management system with document parsing, indexing, and s
 cd backend
 ```
 
-2. Start the server:
+2. Install uv if you haven't already:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+3. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env and add your Dropbox access token
+```
+
+4. Start the server:
 ```bash
 ./start.sh
 ```
@@ -56,8 +74,11 @@ The frontend will be available at `http://localhost:5173`
 ```
 ├── backend/                 # FastAPI backend
 │   ├── services/           # Business logic services
+│   │   ├── parsing.py     # Docling document converter
+│   │   ├── dropbox_storage.py # Dropbox integration
+│   │   └── chroma_store.py # Vector database
 │   ├── main.py            # API endpoints
-│   └── start.sh           # Startup script
+│   └── start.sh           # Startup script (uses uv)
 ├── src/                    # React frontend
 │   ├── pages/             # Page components
 │   ├── components/        # Reusable UI components
@@ -69,10 +90,25 @@ The frontend will be available at `http://localhost:5173`
 
 1. **Create a Project**: Start by creating a new knowledge base project
 2. **Upload Documents**: Add PDF, DOCX, MD, or TXT files to your project
-3. **Parse Documents**: Process documents to extract text and create chunks
-4. **Build Indexes**: Create searchable indexes from completed documents
-5. **Query Knowledge**: Use the Query tab to search your indexed documents
+3. **Parse Documents**: Process documents using Docling with OCR support
+4. **Cloud Storage**: Parsed markdown is automatically uploaded to Dropbox
+5. **Build Indexes**: Create searchable indexes from completed documents
+6. **Query Knowledge**: Use the Query tab to search your indexed documents
 
 ## 🔍 Search
 
 The system uses ChromaDB for vector similarity search, allowing you to find relevant information even with natural language queries.
+
+## ☁️ Dropbox Integration
+
+- Parsed markdown files are automatically uploaded to Dropbox
+- Files are organized by project: `/parsed/{project_id}/{doc_id}.md`
+- Shared links are generated for easy access
+- Local markdown files are cleaned up after upload
+
+## 🛠️ Technology Stack
+
+- **Backend**: FastAPI, Docling, ChromaDB, Dropbox API
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4
+- **Package Management**: uv (Python), npm (Node.js)
+- **Vector Database**: ChromaDB for embeddings and similarity search

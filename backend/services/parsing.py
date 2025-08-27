@@ -1,6 +1,7 @@
 from typing import List, Tuple
 import os
-from docling import DocumentParser
+from docling.document_converter import DocumentConverter
+from .dropbox_storage import upload_and_share_markdown
 
 
 # TODO: replace with a real embedder (e.g., sentence-transformers) for production
@@ -11,27 +12,29 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
 # Plug your automatic Docling parser here. Keep the (text, chunks) return signature.
 def parse_with_docling(file_path: str) -> Tuple[str, List[str]]:
-    """Parse document using Docling with OCR support"""
+    """Parse document using Docling DocumentConverter with OCR support"""
     try:
-        parser = DocumentParser()
-        doc = parser.parse(file_path)
+        # Use the new DocumentConverter API
+        converter = DocumentConverter()
+        doc = converter.convert(file_path).document
         
-        # Extract full text
-        full_text = doc.text
+        # Export to markdown
+        markdown_content = doc.export_to_markdown()
         
-        # Create chunks (512 characters each)
+        # Create chunks from markdown content (512 characters each)
         chunks = []
-        for i in range(0, len(full_text), 512):
-            chunk = full_text[i:i + 512]
+        for i in range(0, len(markdown_content), 512):
+            chunk = markdown_content[i:i + 512]
             if chunk.strip():
                 chunks.append(chunk)
         
         # Ensure at least one chunk
         if not chunks:
-            chunks = [full_text] if full_text.strip() else ["Empty document"]
+            chunks = [markdown_content] if markdown_content.strip() else ["Empty document"]
             
-        return full_text, chunks
+        return markdown_content, chunks
     except Exception as e:
+        print(f"Docling parsing failed: {e}")
         # Fallback to basic parsing if Docling fails
         with open(file_path, "rb") as f:
             data = f.read()
