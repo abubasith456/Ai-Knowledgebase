@@ -234,6 +234,37 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         }
     }, [setError, state.activeProjectId]);
 
+    const parseNextDocument = useCallback(async (projectId: string) => {
+        try {
+            setError(null);
+            const document = await documentsApi.parseNext(projectId);
+            if (document) {
+                dispatch({ type: 'UPDATE_DOCUMENT', payload: { projectId, documentId: document.id, updates: document } });
+                
+                // After parsing completes, check if there are more pending documents to parse
+                setTimeout(() => {
+                    const currentDocs = state.documents[projectId] ?? [];
+                    const hasParsing = currentDocs.some((d) => d.status === "parsing");
+                    const hasPending = currentDocs.some((d) => d.status === "pending");
+                    
+                    if (!hasParsing && hasPending) {
+                        // Start parsing the next pending document
+                        // Use a direct call to avoid circular dependency
+                        documentsApi.parseNext(projectId).then((nextDoc) => {
+                            if (nextDoc) {
+                                dispatch({ type: 'UPDATE_DOCUMENT', payload: { projectId, documentId: nextDoc.id, updates: nextDoc } });
+                            }
+                        }).catch((error) => {
+                            setError(error instanceof Error ? error.message : 'Failed to parse next document');
+                        });
+                    }
+                }, 1000); // Small delay to ensure state is updated
+            }
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Failed to parse document');
+        }
+    }, [state.documents, setError]);
+
     const uploadDocument = useCallback(async (projectId: string, file: File) => {
         try {
             setLoading(true);
@@ -268,37 +299,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             setLoading(false);
         }
     }, [setLoading, setError]);
-
-    const parseNextDocument = useCallback(async (projectId: string) => {
-        try {
-            setError(null);
-            const document = await documentsApi.parseNext(projectId);
-            if (document) {
-                dispatch({ type: 'UPDATE_DOCUMENT', payload: { projectId, documentId: document.id, updates: document } });
-                
-                // After parsing completes, check if there are more pending documents to parse
-                setTimeout(() => {
-                    const currentDocs = state.documents[projectId] ?? [];
-                    const hasParsing = currentDocs.some((d) => d.status === "parsing");
-                    const hasPending = currentDocs.some((d) => d.status === "pending");
-                    
-                    if (!hasParsing && hasPending) {
-                        // Start parsing the next pending document
-                        // Use a direct call to avoid circular dependency
-                        documentsApi.parseNext(projectId).then((nextDoc) => {
-                            if (nextDoc) {
-                                dispatch({ type: 'UPDATE_DOCUMENT', payload: { projectId, documentId: nextDoc.id, updates: nextDoc } });
-                            }
-                        }).catch((error) => {
-                            setError(error instanceof Error ? error.message : 'Failed to parse next document');
-                        });
-                    }
-                }, 1000); // Small delay to ensure state is updated
-            }
-        } catch (error) {
-            setError(error instanceof Error ? error.message : 'Failed to parse document');
-        }
-    }, [state.documents, setError]);
 
     const deleteDocument = useCallback(async (projectId: string, documentId: string) => {
         try {
