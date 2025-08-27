@@ -1,33 +1,55 @@
 // src/pages/Dashboard/components/StatusBadge.tsx
 import React from "react";
-import type { IndexingStatus } from "../types";
 
-type StatusKind = "parsing" | "completed" | IndexingStatus;
+interface StatusBadgeProps {
+    status: string;
+}
 
-type Props = {
-    kind: StatusKind;
-    className?: string;
-    "aria-label"?: string;
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+    const getStatusConfig = (status: string) => {
+        switch (status) {
+            case "pending":
+                return {
+                    label: "Pending",
+                    className: "bg-yellow-100 text-yellow-800 ring-yellow-600/20",
+                };
+            case "parsing":
+                return {
+                    label: "Parsing",
+                    className: "bg-blue-100 text-blue-800 ring-blue-600/20",
+                };
+            case "completed":
+                return {
+                    label: "Completed",
+                    className: "bg-green-100 text-green-800 ring-green-600/20",
+                };
+            case "idle":
+                return {
+                    label: "Idle",
+                    className: "bg-slate-100 text-slate-800 ring-slate-600/20",
+                };
+            case "indexing":
+                return {
+                    label: "Indexing",
+                    className: "bg-purple-100 text-purple-800 ring-purple-600/20",
+                };
+            default:
+                return {
+                    label: status,
+                    className: "bg-slate-100 text-slate-800 ring-slate-600/20",
+                };
+        }
+    };
+
+    const config = getStatusConfig(status);
+
+    return (
+        <span
+            className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${config.className}`}
+        >
+            {config.label}
+        </span>
+    );
 };
-
-const palette: Record<StatusKind, string> = {
-    parsing: "bg-amber-50 text-amber-700 ring-amber-600/20",
-    indexing: "bg-sky-50 text-sky-700 ring-sky-600/20",
-    completed: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-    idle: "bg-slate-50 text-slate-700 ring-slate-500/20",
-};
-
-const toLabel = (k: StatusKind): string => k.charAt(0).toUpperCase() + k.slice(1);
-
-const StatusBadge: React.FC<Props> = ({ kind, className, ...rest }) => (
-    <span
-        className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${palette[kind]} ${className ?? ""}`}
-        role="status"
-        aria-live="polite"
-        aria-label={rest["aria-label"] ?? `${toLabel(kind)} status`}
-    >
-        {toLabel(kind)}
-    </span>
-);
 
 export default StatusBadge;

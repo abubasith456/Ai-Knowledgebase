@@ -1,66 +1,49 @@
-import React, { useMemo, useState } from "react";
-import type { DocumentItem, IndexItem, Project } from "../types";
+import React, { useMemo, useState, useEffect } from "react";
+import { useApp } from "../../context/AppContext";
 import SectionHeader from "../components/SectionHeader";
 import StatusBadge from "../components/StatusBadge";
+import type { QueryResponse } from "../../../services/api/query";
 
 const QueryRoute: React.FC = () => {
-    // Demo sources (replace with context/API)
-    const [projects] = useState<Project[]>([
-        { id: "prj_demo1", name: "Knowledge Base", secret: "sec_xxxxx", indexingStatus: "idle" },
-        { id: "prj_demo2", name: "Marketing Docs", secret: "sec_yyyyy", indexingStatus: "idle" },
-    ]);
-    const [docsByProject] = useState<Record<string, DocumentItem[]>>({
-        prj_demo1: [
-            { id: "d1", filename: "kb-intro.pdf", status: "completed", uploadedAt: "2025-08-26 10:30" },
-            { id: "d2", filename: "release-notes.md", status: "completed", uploadedAt: "2025-08-26 10:40" },
-            { id: "d3", filename: "draft.md", status: "parsing", uploadedAt: "2025-08-26 10:42" },
-        ],
-        prj_demo2: [{ id: "d4", filename: "q3-roadmap.docx", status: "completed", uploadedAt: "2025-08-26 10:41" }],
-    });
-    const [indexesByProject] = useState<Record<string, IndexItem[]>>({
-        prj_demo1: [
-            { id: "idx1", name: "Main Index", status: "completed", documentIds: ["d1", "d2"] },
-            { id: "idx2", name: "Draft Index", status: "completed", documentIds: ["d3"] },
-        ],
-        prj_demo2: [{ id: "idx3", name: "Marketing Index", status: "completed", documentIds: ["d4"] }],
-    });
+    const {
+        projects,
+        documents,
+        indexes,
+        loading,
+        queryIndex,
+    } = useApp();
 
-    const [projectId, setProjectId] = useState<string>("prj_demo1");
+    const [projectId, setProjectId] = useState<string>("");
     const [selectedIndexId, setSelectedIndexId] = useState<string>("");
     const [queryText, setQueryText] = useState<string>("");
-    const [queryResults, setQueryResults] = useState<any[]>([]);
+    const [queryResults, setQueryResults] = useState<QueryResponse | null>(null);
     const [isQuerying, setIsQuerying] = useState<boolean>(false);
 
-    const docs = useMemo(() => docsByProject[projectId] ?? [], [docsByProject, projectId]);
-    const indexes = useMemo(() => indexesByProject[projectId] ?? [], [indexesByProject, projectId]);
-    const completedIndexes = useMemo(() => indexes.filter(idx => idx.status === "completed"), [indexes]);
+    // Set first project as default if available
+    useEffect(() => {
+        if (projects.length > 0 && !projectId) {
+            setProjectId(projects[0].id);
+        }
+    }, [projects, projectId]);
+
+    const docs = useMemo(() => documents[projectId] ?? [], [documents, projectId]);
+    const projectIndexes = useMemo(() => indexes[projectId] ?? [], [indexes, projectId]);
+    const completedIndexes = useMemo(() => projectIndexes.filter(idx => idx.status === "completed"), [projectIndexes]);
 
     const handleQuery = async () => {
         if (!queryText.trim() || !selectedIndexId) return;
 
         setIsQuerying(true);
         try {
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Mock results
-            const mockResults = [
-                {
-                    document: `This is a sample result for query: "${queryText}". It shows how the search would work with the selected index.`,
-                    metadata: { project_id: projectId, doc_id: "d1", chunk_index: 0 },
-                    distance: 0.1
-                },
-                {
-                    document: `Another relevant result containing information about "${queryText}". This demonstrates the search functionality.`,
-                    metadata: { project_id: projectId, doc_id: "d2", chunk_index: 1 },
-                    distance: 0.3
-                }
-            ];
-            
-            setQueryResults(mockResults);
+            const response = await queryIndex(projectId, {
+                index_id: selectedIndexId,
+                query: queryText.trim(),
+                n_results: 5
+            });
+            setQueryResults(response);
         } catch (error) {
-            console.error("Query failed:", error);
-            setQueryResults([]);
+            // Error is handled by context
+            setQueryResults(null);
         } finally {
             setIsQuerying(false);
         }
@@ -68,8 +51,16 @@ const QueryRoute: React.FC = () => {
 
     const clearQuery = () => {
         setQueryText("");
-        setQueryResults([]);
+        setQueryResults(null);
     };
+
+    if (projects.length === 0) {
+        return (
+            <div className="text-center py-12">
+                <p className="text-sm text-slate-500">No projects available. Create a project first.</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -81,7 +72,7 @@ const QueryRoute: React.FC = () => {
                     onChange={(e) => {
                         setProjectId(e.target.value);
                         setSelectedIndexId("");
-                        setQueryResults([]);
+                        setQueryResults(null);
                     }}
                     className="mt-1 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                 >
@@ -104,7 +95,7 @@ const QueryRoute: React.FC = () => {
                     <option value="">Choose an index...</option>
                     {completedIndexes.map((idx) => (
                         <option key={idx.id} value={idx.id}>
-                            {idx.name} ({idx.documentIds.length} docs)
+                            {idx.name} ({idx.document_ids.length} docs)
                         </option>
                     ))}
                 </select>
@@ -151,15 +142,15 @@ const QueryRoute: React.FC = () => {
             </div>
 
             {/* Results */}
-            {queryResults.length > 0 && (
+            {queryResults && queryResults.results.length > 0 && (
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
                     <SectionHeader
                         title="Search Results"
-                        subtitle={`Found ${queryResults.length} relevant results`}
+                        subtitle={`Found ${queryResults.total_results} relevant results`}
                     />
                     
                     <div className="mt-4 space-y-4">
-                        {queryResults.map((result, index) => (
+                        {queryResults.results.map((result, index) => (
                             <div key={index} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
@@ -178,11 +169,21 @@ const QueryRoute: React.FC = () => {
             )}
 
             {/* No results message */}
-            {queryResults.length === 0 && queryText && selectedIndexId && !isQuerying && (
+            {queryResults && queryResults.results.length === 0 && queryText && selectedIndexId && !isQuerying && (
                 <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
                     <div className="text-center py-8">
                         <p className="text-sm text-slate-500">No results found for your query.</p>
                         <p className="text-xs text-slate-400 mt-1">Try rephrasing your question or selecting a different index.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Loading indicator */}
+            {loading && (
+                <div className="text-center py-4">
+                    <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600"></div>
+                        Loading...
                     </div>
                 </div>
             )}
