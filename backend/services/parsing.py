@@ -1,8 +1,5 @@
 from typing import List, Tuple
 import os
-from docling.document_converter import DocumentConverter
-from .dropbox_storage import upload_and_share_markdown
-
 
 # TODO: replace with a real embedder (e.g., sentence-transformers) for production
 def embed_texts(texts: List[str]) -> List[List[float]]:
@@ -10,10 +7,12 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     return [[float(len(t) % 7)] * 8 for t in texts]
 
 
-# Plug your automatic Docling parser here. Keep the (text, chunks) return signature.
 def parse_with_docling(file_path: str) -> Tuple[str, List[str]]:
     """Parse document using Docling DocumentConverter with OCR support"""
     try:
+        # Import here to avoid circular imports
+        from docling.document_converter import DocumentConverter
+        
         # Use the new DocumentConverter API
         converter = DocumentConverter()
         doc = converter.convert(file_path).document

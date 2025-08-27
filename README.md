@@ -112,3 +112,17 @@ The system uses ChromaDB for vector similarity search, allowing you to find rele
 - **Frontend**: React 19, TypeScript, Tailwind CSS v4
 - **Package Management**: uv (Python), npm (Node.js)
 - **Vector Database**: ChromaDB for embeddings and similarity search
+
+## 🚨 Troubleshooting
+
+### Import Errors
+If you encounter import errors like "cannot import name 'DocumentConverter'", the issue has been resolved by:
+- Moving the Docling import inside the function to avoid circular imports
+- Cleaning up duplicate files and consolidating logic
+- Using proper import paths
+
+### Startup Issues
+The startup script now includes import checks to catch any dependency issues early. If the import check fails:
+1. Ensure all dependencies are installed: `uv pip install -r requirements.txt`
+2. Check that you're using Python 3.8+ and uv
+3. Verify your environment variables are set correctly
