@@ -44,14 +44,15 @@ const ProjectsRoute: React.FC = () => {
         
         const list = documents[activeProject.id] ?? [];
         const hasParsing = list.some((d) => d.status === "parsing");
+        const hasPending = list.some((d) => d.status === "pending");
         
-        if (!hasParsing) {
+        if (!hasParsing && hasPending) {
             const next = list.find((d) => d.status === "pending");
             if (next) {
                 parseNextDocument(activeProject.id);
             }
         }
-    }, [activeProject, activeProject?.id, parseNextDocument]);
+    }, [activeProject, activeProject?.id, parseNextDocument, documents]);
 
     // Create project
     const onCreate = async (name: string) => {
@@ -118,6 +119,15 @@ const ProjectsRoute: React.FC = () => {
                 <SectionHeader
                     title="Upload Documents"
                     subtitle={SPLIT_UPLOAD_TYPES}
+                    actions={
+                        <button
+                            onClick={() => parseNextDocument(activeProject.id)}
+                            disabled={!docs.some(d => d.status === "pending")}
+                            className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                        >
+                            Start Parsing
+                        </button>
+                    }
                 />
                 <div className="mt-4">
                     <input
@@ -136,6 +146,22 @@ const ProjectsRoute: React.FC = () => {
                     title="Documents"
                     subtitle={`${docs.length} document${docs.length !== 1 ? 's' : ''} in this project`}
                 />
+                
+                {/* Parsing Queue Status */}
+                {docs.length > 0 && (
+                    <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="h-3 w-3 rounded-full bg-blue-500"></div>
+                                <span className="text-sm font-medium text-blue-900">Parsing Queue</span>
+                            </div>
+                            <div className="text-xs text-blue-700">
+                                {docs.filter(d => d.status === "parsing").length} parsing • {docs.filter(d => d.status === "pending").length} pending • {docs.filter(d => d.status === "completed").length} completed
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
                 <div className="mt-4 space-y-3">
                     {docs.length === 0 ? (
                         <p className="text-sm text-slate-500 text-center py-8">
@@ -155,7 +181,17 @@ const ProjectsRoute: React.FC = () => {
                                         <p className="text-xs text-slate-500">ID: {doc.id}</p>
                                     </div>
                                 </div>
-                                <StatusBadge status={doc.status} />
+                                <div className="flex items-center gap-2">
+                                    <StatusBadge status={doc.status} />
+                                    {doc.status === "pending" && (
+                                        <button
+                                            onClick={() => parseNextDocument(activeProject.id)}
+                                            className="px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
+                                        >
+                                            Parse Now
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         ))
                     )}
