@@ -20,6 +20,13 @@ class DocumentOut(BaseModel):
     md_url: str | None = None
     chunk_count: int | None = None
     total_characters: int | None = None
+    uploaded_at: float | None = None
+    processing_started: bool | None = None
+    processing_started_at: float | None = None
+    completed_at: float | None = None
+    processing_duration: float | None = None
+    error_message: str | None = None
+    last_error_at: float | None = None
 
 
 class IndexCreate(BaseModel):

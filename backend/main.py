@@ -68,6 +68,13 @@ def _doc_out(d: dict) -> DocumentOut:
         md_url=d.get("md_url"),
         chunk_count=d.get("chunk_count"),
         total_characters=d.get("total_characters"),
+        uploaded_at=d.get("uploaded_at"),
+        processing_started=d.get("processing_started"),
+        processing_started_at=d.get("processing_started_at"),
+        completed_at=d.get("completed_at"),
+        processing_duration=d.get("processing_duration"),
+        error_message=d.get("error_message"),
+        last_error_at=d.get("last_error_at"),
     )
 
 
@@ -129,13 +136,16 @@ async def upload_document(project_id: str, file: UploadFile = File(...), backgro
         "filename": filename,
         "status": "pending",
         "md_url": None,  # will be set after parsing/upload to Dropbox
+        "uploaded_at": time.time(),
+        "processing_started": False,
     }
     docs_store.set(doc_id, d)
     docs_store.list_append_unique_front(project_id, doc_id)
     
-    # Start background parsing task immediately
+    # Start background parsing task immediately in separate thread
     background_tasks.add_task(_parse_and_store, doc_id)
     
+    print(f"Document {doc_id} uploaded and background parsing task started")
     return _doc_out(d)
 
 
@@ -149,63 +159,49 @@ def list_documents(project_id: str, skip: int = 0, limit: int = 100):
     return PaginatedDocs(items=[_doc_out(d) for d in page], total=len(items))
 
 
-# Manual parsing trigger (for retry purposes)
-@app.post("/projects/{project_id}/parse-next", response_model=Optional[DocumentOut])
-def parse_next(project_id: str, background_tasks: BackgroundTasks):
-    if not projects_store.get(project_id):
-        raise HTTPException(status_code=404, detail="Project not found")
-    ids = docs_store.list_get(project_id)
-    # If any parsing in progress, return it
-    for did in ids:
-        d = docs_store.get(did)
-        if d and d["status"] == "parsing":
-            return _doc_out(d)
-    # Pick the first pending
-    next_id = next(
-        (did for did in ids if (docs_store.get(did) or {}).get("status") == "pending"),
-        None,
-    )
-    if not next_id:
-        return None
-    cur = docs_store.get(next_id)
-    if cur is None:
-        return None
-    cur["status"] = "parsing"
-    docs_store.set(next_id, cur)
-    background_tasks.add_task(_parse_and_store, next_id)
-    return _doc_out(cur)
+
 
 
 def _parse_and_store(doc_id: str):
+    """
+    Background task to parse and store a document.
+    This runs in a separate thread for each uploaded document.
+    """
     d = docs_store.get(doc_id)
     if not d:
+        print(f"Document {doc_id} not found in store")
         return
     
     try:
-        # Update status to parsing
+        # Update status to parsing and mark processing started
         d["status"] = "parsing"
+        d["processing_started"] = True
+        d["processing_started_at"] = time.time()
         docs_store.set(doc_id, d)
         
+        print(f"[{doc_id}] 🚀 Starting background parsing task for: {d['filename']}")
+        
         path = _file_path(d["id"], d["filename"])
-        print(f"Starting to parse document: {path}")
+        print(f"[{doc_id}] 📁 File path: {path}")
         
         # Parse document using our new auto-chunking parser
         full_text, chunks = parse_with_docling(path)
-        print(f"Document parsed successfully into {len(chunks)} chunks")
+        print(f"[{doc_id}] ✅ Document parsed successfully into {len(chunks)} chunks")
         
         # Upload parsed Markdown to Dropbox
         md_url = None
         try:
+            print(f"[{doc_id}] ☁️ Uploading markdown to Dropbox...")
             md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
-            print(f"Markdown uploaded to Dropbox: {md_url}")
+            print(f"[{doc_id}] ✅ Markdown uploaded to Dropbox: {md_url}")
         except Exception as e:
-            print(f"Dropbox upload failed: {e}")
+            print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
             # Dropbox optional; backend continues
         
         # Use hybrid service for better embeddings if available
         try:
             from services.hybrid_service import hybrid_service
-            print("Using hybrid service for embeddings...")
+            print(f"[{doc_id}] 🧠 Using hybrid service for embeddings...")
             
             # Count tokens for the full text (simple fallback)
             token_count = len(full_text.split())
@@ -216,24 +212,24 @@ def _parse_and_store(doc_id: str):
             )
             
             if success and embeddings:
-                print(f"Hybrid service generated {len(embeddings)} embeddings")
+                print(f"[{doc_id}] ✅ Hybrid service generated {len(embeddings)} embeddings")
                 # Use optimized chunks if available, otherwise use original chunks
                 final_chunks = optimized_chunks if optimized_chunks else chunks
                 final_embeddings = embeddings
             else:
-                print(f"Hybrid service failed: {message}, falling back to basic embeddings")
+                print(f"[{doc_id}] ⚠️ Hybrid service failed: {message}, falling back to basic embeddings")
                 # Fallback to basic embeddings
                 final_chunks = chunks
                 final_embeddings = build_embeddings_from_chunks(chunks)
                 
         except Exception as e:
-            print(f"Hybrid service error: {e}, using fallback embeddings")
+            print(f"[{doc_id}] ❌ Hybrid service error: {e}, using fallback embeddings")
             # Fallback to basic embeddings
             final_chunks = chunks
             final_embeddings = build_embeddings_from_chunks(chunks)
         
         # Store to ChromaDB
-        print(f"Storing {len(final_chunks)} chunks to ChromaDB...")
+        print(f"[{doc_id}] 💾 Storing {len(final_chunks)} chunks to ChromaDB...")
         add_documents(
             collection_name=project_collection_name(d["project_id"]),
             ids=[f"{doc_id}_{i}" for i in range(len(final_chunks))],
@@ -245,22 +241,30 @@ def _parse_and_store(doc_id: str):
             documents=final_chunks,
         )
         
-        # Update document status to completed
+        # Update document status to completed with all metadata
         d["status"] = "completed"
         d["md_url"] = md_url
         d["chunk_count"] = len(final_chunks)
         d["total_characters"] = len(full_text)
+        d["completed_at"] = time.time()
+        d["processing_duration"] = d["completed_at"] - d["processing_started_at"]
         docs_store.set(doc_id, d)
         
-        print(f"Document {doc_id} processing completed successfully")
+        print(f"[{doc_id}] 🎉 Document processing completed successfully in {d['processing_duration']:.2f}s")
         
     except Exception as e:
-        print(f"Parsing failed for document {doc_id}: {e}")
+        print(f"[{doc_id}] ❌ Parsing failed: {e}")
         import traceback
         traceback.print_exc()
+        
         # Reset to pending to allow retry
         d["status"] = "pending"
+        d["processing_started"] = False
+        d["error_message"] = str(e)
+        d["last_error_at"] = time.time()
         docs_store.set(doc_id, d)
+        
+        print(f"[{doc_id}] 🔄 Document reset to pending status for retry")
 
 
 # Indexes
