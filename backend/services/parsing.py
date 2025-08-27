@@ -1,5 +1,6 @@
 from typing import List, Tuple
 import os
+from .index import parse_document_simple, auto_chunk_text
 
 # TODO: replace with a real embedder (e.g., sentence-transformers) for production
 def embed_texts(texts: List[str]) -> List[List[float]]:
@@ -8,38 +9,36 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
 
 def parse_with_docling(file_path: str) -> Tuple[str, List[str]]:
-    """Parse document using Docling DocumentConverter with OCR support"""
+    """Parse document using our custom auto-chunking parser"""
     try:
-        # Import here to avoid circular imports
-        from docling.document_converter import DocumentConverter
+        # Use our new auto-chunking parser instead of docling
+        content, chunks = parse_document_simple(file_path)
         
-        # Use the new DocumentConverter API
-        converter = DocumentConverter()
-        doc = converter.convert(file_path).document
+        # Optimize chunks for better embedding performance
+        optimized_chunks = auto_chunk_text(content, chunk_size=512, overlap=50)
         
-        # Export to markdown
-        markdown_content = doc.export_to_markdown()
-        
-        # Create chunks from markdown content (512 characters each)
-        chunks = []
-        for i in range(0, len(markdown_content), 512):
-            chunk = markdown_content[i:i + 512]
-            if chunk.strip():
-                chunks.append(chunk)
-        
-        # Ensure at least one chunk
-        if not chunks:
-            chunks = [markdown_content] if markdown_content.strip() else ["Empty document"]
+        # Ensure we have at least one chunk
+        if not optimized_chunks:
+            optimized_chunks = [content] if content else ["Empty document"]
             
-        return markdown_content, chunks
+        return content, optimized_chunks
     except Exception as e:
-        print(f"Docling parsing failed: {e}")
-        # Fallback to basic parsing if Docling fails
-        with open(file_path, "rb") as f:
-            data = f.read()
-        text = f"Parsed {len(data)} bytes from {file_path}"
-        chunks = [text[i : i + 512] for i in range(0, len(text), 512)] or [text]
-        return text, chunks
+        print(f"Document parsing failed: {e}")
+        # Fallback to basic parsing if our parser fails
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(file_path, "rb") as f:
+                data = f.read()
+            content = f"Parsed {len(data)} bytes from {file_path}"
+        
+        # Use auto-chunking for fallback as well
+        chunks = auto_chunk_text(content, chunk_size=512, overlap=50)
+        if not chunks:
+            chunks = [content] if content else ["Empty document"]
+        
+        return content, chunks
 
 
 def build_embeddings_from_chunks(chunks: List[str]) -> List[List[float]]:
