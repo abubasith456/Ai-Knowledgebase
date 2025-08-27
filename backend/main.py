@@ -125,21 +125,26 @@ def delete_project(project_id: str):
         for doc_id in doc_ids:
             doc = docs_store.get(doc_id)
             if doc:
-                # Remove from ChromaDB
+                # Remove from ChromaDB (optional - collection might not exist)
                 try:
                     from services.chroma_store import delete_documents
                     delete_documents(
                         collection_name=project_collection_name(project_id),
                         filter_metadata={"project_id": project_id}
                     )
+                    print(f"Removed documents from ChromaDB collection: {project_collection_name(project_id)}")
                 except Exception as e:
-                    print(f"ChromaDB deletion failed for project {project_id}: {e}")
+                    print(f"ChromaDB deletion failed for project {project_id} (collection might not exist): {e}")
+                    # This is not critical - continue with deletion
                 
                 # Remove file
                 try:
-                    file_path = _file_path(doc_id, doc["filename"])
+                    file_path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{doc['filename']}")
                     if os.path.exists(file_path):
                         os.remove(file_path)
+                        print(f"Deleted file: {file_path}")
+                    else:
+                        print(f"File not found (already deleted): {file_path}")
                 except Exception as e:
                     print(f"File deletion failed: {e}")
                 
@@ -218,15 +223,16 @@ def delete_document(project_id: str, document_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
     
     try:
-        # Remove from ChromaDB collection
+        # Remove from ChromaDB collection (optional - collection might not exist)
         try:
             from services.chroma_store import delete_documents
             delete_documents(
                 collection_name=project_collection_name(project_id),
                 filter_metadata={"doc_id": document_id}
             )
+            print(f"Removed document from ChromaDB collection: {project_collection_name(project_id)}")
         except Exception as e:
-            print(f"ChromaDB deletion failed: {e}")
+            print(f"ChromaDB deletion failed (collection might not exist): {e}")
             # Continue with local deletion even if ChromaDB fails
         
         # Remove from local storage
@@ -235,9 +241,12 @@ def delete_document(project_id: str, document_id: str):
         
         # Remove file from uploads directory
         try:
-            file_path = _file_path(document_id, doc["filename"])
+            file_path = os.path.join(settings.UPLOAD_DIR, f"{document_id}_{doc['filename']}")
             if os.path.exists(file_path):
                 os.remove(file_path)
+                print(f"Deleted file: {file_path}")
+            else:
+                print(f"File not found (already deleted): {file_path}")
         except Exception as e:
             print(f"File deletion failed: {e}")
         
