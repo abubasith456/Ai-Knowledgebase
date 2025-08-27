@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useApp } from "../../../context/AppContext";
 import ProjectCards from "../components/ProjectCards";
 import SectionHeader from "../components/SectionHeader";
@@ -21,6 +21,7 @@ const ProjectsRoute: React.FC = () => {
 
     const [newProjectName, setNewProjectName] = useState<string>("");
     const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
+    const loadedProjectsRef = useRef<Set<string>>(new Set());
 
     const activeProject = useMemo(
         () => projects.find((p) => p.id === activeProjectId) ?? null,
@@ -31,10 +32,11 @@ const ProjectsRoute: React.FC = () => {
 
     // Load documents when active project changes
     useEffect(() => {
-        if (activeProject) {
+        if (activeProject && !loadedProjectsRef.current.has(activeProject.id)) {
+            loadedProjectsRef.current.add(activeProject.id);
             loadDocuments(activeProject.id);
         }
-    }, [activeProject, loadDocuments]);
+    }, [activeProject, activeProject?.id, loadDocuments]);
 
     // Auto-parse next document when none is parsing
     useEffect(() => {
@@ -49,7 +51,7 @@ const ProjectsRoute: React.FC = () => {
                 parseNextDocument(activeProject.id);
             }
         }
-    }, [activeProject, documents, parseNextDocument]);
+    }, [activeProject, activeProject?.id, parseNextDocument]);
 
     // Create project
     const onCreate = async (name: string) => {
