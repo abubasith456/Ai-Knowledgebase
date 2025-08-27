@@ -115,6 +115,57 @@ def list_projects():
     return [_proj_out(p) for p in projects_store.all_values()]
 
 
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: str):
+    project = projects_store.get(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # Delete all documents in the project
+        doc_ids = docs_store.list_get(project_id) or []
+        for doc_id in doc_ids:
+            doc = docs_store.get(doc_id)
+            if doc:
+                # Remove from ChromaDB
+                try:
+                    from services.chroma_store import delete_documents
+                    delete_documents(
+                        collection_name=project_collection_name(project_id),
+                        filter_metadata={"project_id": project_id}
+                    )
+                except Exception as e:
+                    print(f"ChromaDB deletion failed for project {project_id}: {e}")
+                
+                # Remove file
+                try:
+                    file_path = _file_path(doc_id, doc["filename"])
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as e:
+                    print(f"File deletion failed: {e}")
+                
+                # Remove from storage
+                docs_store.delete(doc_id)
+        
+        # Delete all indexes in the project
+        index_ids = indexes_store.list_get(project_id) or []
+        for index_id in index_ids:
+            indexes_store.delete(index_id)
+        
+        # Remove project lists
+        docs_store.list_remove_all(project_id)
+        indexes_store.list_remove_all(project_id)
+        
+        # Delete the project
+        projects_store.delete(project_id)
+        
+        return {"message": "Project deleted successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
+
+
 # Documents
 @app.post("/projects/{project_id}/documents", response_model=DocumentOut)
 async def upload_document(project_id: str, file: UploadFile = File(...), background_tasks: BackgroundTasks):
@@ -157,6 +208,45 @@ def list_documents(project_id: str, skip: int = 0, limit: int = 100):
     items = [docs_store.get(i) for i in ids if docs_store.get(i)]
     page = items[skip : skip + limit]
     return PaginatedDocs(items=[_doc_out(d) for d in page], total=len(items))
+
+
+@app.delete("/projects/{project_id}/documents/{document_id}")
+def delete_document(project_id: str, document_id: str):
+    if not projects_store.get(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    doc = docs_store.get(document_id)
+    if not doc or doc["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    try:
+        # Remove from ChromaDB collection
+        try:
+            from services.chroma_store import delete_documents
+            delete_documents(
+                collection_name=project_collection_name(project_id),
+                filter_metadata={"doc_id": document_id}
+            )
+        except Exception as e:
+            print(f"ChromaDB deletion failed: {e}")
+            # Continue with local deletion even if ChromaDB fails
+        
+        # Remove from local storage
+        docs_store.delete(document_id)
+        docs_store.list_remove(project_id, document_id)
+        
+        # Remove file from uploads directory
+        try:
+            file_path = _file_path(document_id, doc["filename"])
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"File deletion failed: {e}")
+        
+        return {"message": "Document deleted successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
 
 
@@ -316,6 +406,23 @@ def start_indexing(project_id: str, index_id: str, background_tasks: BackgroundT
     indexes_store.set(index_id, idx)
     background_tasks.add_task(_finalize_index, index_id)
     return _idx_out(idx)
+
+
+@app.delete("/projects/{project_id}/indexes/{index_id}")
+def delete_index(project_id: str, index_id: str):
+    idx = indexes_store.get(index_id)
+    if not idx or idx["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="Index not found")
+    
+    try:
+        # Remove from storage
+        indexes_store.delete(index_id)
+        indexes_store.list_remove(project_id, index_id)
+        
+        return {"message": "Index deleted successfully"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete index: {str(e)}")
 
 
 def _finalize_index(index_id: str):

@@ -222,8 +222,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const deleteProject = useCallback(async (projectId: string) => {
         try {
             setError(null);
-            // Note: You'll need to implement deleteProject in your API
-            // For now, we'll just remove it from the local state
+            setLoading(true);
+            
+            // Call the actual delete API
+            await projectsApi.delete(projectId);
+            
+            // Update local state after successful API call
             dispatch({ type: 'DELETE_PROJECT', payload: projectId });
             // If this was the active project, clear it
             if (state.activeProjectId === projectId) {
@@ -231,8 +235,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             }
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to delete project');
+            throw error;
+        } finally {
+            setLoading(false);
         }
-    }, [setError, state.activeProjectId]);
+    }, [setError, setLoading, state.activeProjectId]);
 
     const parseNextDocument = useCallback(async (projectId: string) => {
         try {
@@ -303,13 +310,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const deleteDocument = useCallback(async (projectId: string, documentId: string) => {
         try {
             setError(null);
-            // Note: You'll need to implement deleteDocument in your API
-            // For now, we'll just remove it from the local state
+            setLoading(true);
+            
+            // Call the actual delete API
+            await documentsApi.delete(projectId, documentId);
+            
+            // Update local state after successful API call
             dispatch({ type: 'DELETE_DOCUMENT', payload: { projectId, documentId } });
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to delete document');
+            throw error;
+        } finally {
+            setLoading(false);
         }
-    }, [setError]);
+    }, [setError, setLoading]);
 
     const createIndex = useCallback(async (projectId: string, name: string, documentIds: string[]) => {
         try {
@@ -351,13 +365,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const deleteIndex = useCallback(async (projectId: string, indexId: string) => {
         try {
             setError(null);
-            // Note: You'll need to implement deleteIndex in your API
-            // For now, we'll just remove it from the local state
+            setLoading(true);
+            
+            // Call the actual delete API
+            await indexesApi.delete(projectId, indexId);
+            
+            // Update local state after successful API call
             dispatch({ type: 'DELETE_INDEX', payload: { projectId, indexId } });
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to delete index');
+            throw error;
+        } finally {
+            setLoading(false);
         }
-    }, [setError]);
+    }, [setError, setLoading]);
 
     const queryIndex = useCallback(async (projectId: string, queryData: QueryRequest): Promise<QueryResponse> => {
         try {

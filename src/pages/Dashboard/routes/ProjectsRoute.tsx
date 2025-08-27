@@ -22,6 +22,11 @@ const ProjectsRoute: React.FC = () => {
 
     const [newProjectName, setNewProjectName] = useState<string>("");
     const [isCreatingProject, setIsCreatingProject] = useState<boolean>(false);
+    const [currentPage, setCurrentPage] = useState<number>(() => {
+        const saved = localStorage.getItem(`project-${activeProjectId}-page`);
+        return saved ? parseInt(saved, 10) : 0;
+    });
+    const [pageSize] = useState<number>(100);
     const loadedProjectsRef = useRef<Set<string>>(new Set());
 
     const activeProject = useMemo(
@@ -59,6 +64,13 @@ const ProjectsRoute: React.FC = () => {
             clearInterval(interval);
         };
     }, [activeProject, documents, loadDocuments]);
+
+    // Persist pagination state to localStorage
+    useEffect(() => {
+        if (activeProjectId) {
+            localStorage.setItem(`project-${activeProjectId}-page`, currentPage.toString());
+        }
+    }, [currentPage, activeProjectId]);
 
 
 

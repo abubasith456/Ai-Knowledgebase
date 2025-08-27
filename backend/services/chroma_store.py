@@ -101,6 +101,17 @@ class ChromaStore:
             print(f"Error getting collection info: {e}")
             return None
 
+    def delete_documents(self, collection_name: str, filter_metadata: Dict[str, Any]) -> bool:
+        """Delete documents by metadata filter"""
+        try:
+            collection = self.client.get_collection(name=collection_name)
+            # Delete documents matching the filter
+            collection.delete(where=filter_metadata)
+            return True
+        except Exception as e:
+            print(f"Error deleting documents from ChromaDB: {e}")
+            return False
+
 # Global instance
 chroma_store = ChromaStore()
 
@@ -113,3 +124,7 @@ def add_documents(collection_name: str, ids: List[str],
 def query_documents(collection_name: str, query_text: str, n_results: int = 5) -> List[Dict[str, Any]]:
     """Convenience function to query documents"""
     return chroma_store.query_documents(collection_name, query_text, n_results)
+
+def delete_documents(collection_name: str, filter_metadata: Dict[str, Any]) -> bool:
+    """Convenience function to delete documents by metadata filter"""
+    return chroma_store.delete_documents(collection_name, filter_metadata)

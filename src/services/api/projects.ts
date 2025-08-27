@@ -50,6 +50,11 @@ export const projectsApi = {
         const response = await apiClient.get<Project>(`/projects/${id}`);
         return response.data;
     },
+
+    // Delete project
+    delete: async (id: string): Promise<void> => {
+        await apiClient.delete(`/projects/${id}`);
+    },
 };
 
 // Documents API
@@ -86,6 +91,11 @@ export const documentsApi = {
         );
         return response.data;
     },
+
+    // Delete document
+    delete: async (projectId: string, documentId: string): Promise<void> => {
+        await apiClient.delete(`/projects/${projectId}/documents/${documentId}`);
+    },
 };
 
 // Indexes API
@@ -108,5 +118,10 @@ export const indexesApi = {
             `/projects/${projectId}/indexes/${indexId}/start`
         );
         return response.data;
+    },
+
+    // Delete index
+    delete: async (projectId: string, indexId: string): Promise<void> => {
+        await apiClient.delete(`/projects/${projectId}/indexes/${indexId}`);
     },
 };
