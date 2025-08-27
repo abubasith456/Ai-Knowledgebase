@@ -16,6 +16,7 @@ class DocumentOut(BaseModel):
     id: str
     project_id: str
     filename: str
+    stored_filename: str | None = None
     status: str
     md_url: str | None = None
     uploaded_at: float | None = None

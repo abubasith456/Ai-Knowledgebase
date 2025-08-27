@@ -64,6 +64,7 @@ def _doc_out(d: dict) -> DocumentOut:
         id=d["id"],
         project_id=d["project_id"],
         filename=d["filename"],
+        stored_filename=d.get("stored_filename"),
         status=d["status"],
         md_url=d.get("md_url"),
         uploaded_at=d.get("uploaded_at"),
@@ -188,7 +189,8 @@ async def upload_document(project_id: str, background_tasks: BackgroundTasks, fi
     
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
     filename = file.filename
-    path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{filename}")
+    stored_filename = f"{doc_id}_{filename}"
+    path = os.path.join(settings.UPLOAD_DIR, stored_filename)
     
     # Save the uploaded file temporarily (will be replaced with parsed .md)
     with open(path, "wb") as out:
@@ -199,6 +201,7 @@ async def upload_document(project_id: str, background_tasks: BackgroundTasks, fi
         "id": doc_id,
         "project_id": project_id,
         "filename": filename,
+        "stored_filename": stored_filename,
         "status": "pending",
         "md_url": None,  # will be set after parsing/upload to Dropbox
         "uploaded_at": time.time(),
@@ -288,7 +291,7 @@ def _parse_and_store(doc_id: str):
         print(f"[{doc_id}] 🚀 Starting background parsing task for: {d['filename']}")
         
         # Check if the file exists before trying to parse it
-        path = os.path.join(settings.UPLOAD_DIR, d["filename"])
+        path = os.path.join(settings.UPLOAD_DIR, d["stored_filename"])
         if not os.path.exists(path):
             print(f"[{doc_id}] ❌ File not found: {path}")
             d["status"] = "failed"
@@ -305,7 +308,7 @@ def _parse_and_store(doc_id: str):
         
         # Replace the original file with parsed markdown content
         try:
-            # Create .md filename
+            # Create .md filename derived from original name
             md_filename = f"{doc_id}_{os.path.splitext(d['filename'])[0]}.md"
             md_path = os.path.join(settings.UPLOAD_DIR, md_filename)
             
@@ -318,13 +321,11 @@ def _parse_and_store(doc_id: str):
                 os.remove(path)
                 print(f"[{doc_id}] 🗑️ Removed original binary file: {path}")
             
-            # Update the document record with new filename
-            d["filename"] = md_filename
+            # Track md path for later cleanup
+            d["stored_md_filename"] = md_filename
             docs_store.set(doc_id, d)
             
             print(f"[{doc_id}] 💾 Saved parsed content to: {md_path}")
-            
-            # Note: We'll delete this local file after Dropbox upload
             
         except Exception as e:
             print(f"[{doc_id}] ❌ Failed to save markdown file: {e}")
@@ -337,13 +338,13 @@ def _parse_and_store(doc_id: str):
             md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
             print(f"[{doc_id}] ✅ Markdown uploaded to Dropbox: {md_url}")
             
-            # After successful Dropbox upload, delete the local .md file
+            # After successful Dropbox upload, delete the local .md file if present
             try:
-                if os.path.exists(md_path):
-                    os.remove(md_path)
-                    print(f"[{doc_id}] 🗑️ Deleted local .md file after Dropbox upload: {md_path}")
-                else:
-                    print(f"[{doc_id}] ⚠️ Local .md file not found for deletion: {md_path}")
+                if d.get("stored_md_filename"):
+                    md_path = os.path.join(settings.UPLOAD_DIR, d["stored_md_filename"])
+                    if os.path.exists(md_path):
+                        os.remove(md_path)
+                        print(f"[{doc_id}] 🗑️ Deleted local .md file after Dropbox upload: {md_path}")
             except Exception as e:
                 print(f"[{doc_id}] ❌ Failed to delete local .md file: {e}")
                 

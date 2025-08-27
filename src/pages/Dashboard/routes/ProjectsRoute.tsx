@@ -101,6 +101,10 @@ const ProjectsRoute: React.FC = () => {
             }
         } catch (error) {
             // Error is handled by context
+        } finally {
+            // Clear the file input so the same file can be selected again
+            const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+            if (input) input.value = "";
         }
     };
 
