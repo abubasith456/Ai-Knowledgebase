@@ -1,13 +1,11 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
+import { useApp } from "../../../context/AppContext";
 import SectionHeader from "../components/SectionHeader";
-import StatusBadge from "../components/StatusBadge";
 import type { QueryResponse } from "../../../services/api/query";
 
 const QueryRoute: React.FC = () => {
     const {
         projects,
-        documents,
         indexes,
         loading,
         queryIndex,
@@ -26,7 +24,7 @@ const QueryRoute: React.FC = () => {
         }
     }, [projects, projectId]);
 
-    const docs = useMemo(() => documents[projectId] ?? [], [documents, projectId]);
+    // const docs = useMemo(() => documents[projectId] ?? [], [documents, projectId]);
     const projectIndexes = useMemo(() => indexes[projectId] ?? [], [indexes, projectId]);
     const completedIndexes = useMemo(() => projectIndexes.filter(idx => idx.status === "completed"), [projectIndexes]);
 

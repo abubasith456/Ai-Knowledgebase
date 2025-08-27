@@ -2,10 +2,11 @@
 import React from "react";
 
 interface StatusBadgeProps {
-    status: string;
+    status?: string;
+    kind?: string;
 }
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status, kind }) => {
     const getStatusConfig = (status: string) => {
         switch (status) {
             case "pending":
@@ -41,7 +42,8 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
         }
     };
 
-    const config = getStatusConfig(status);
+    const resolved = kind ?? status ?? "idle";
+    const config = getStatusConfig(resolved);
 
     return (
         <span
