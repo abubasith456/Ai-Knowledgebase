@@ -1,6 +1,6 @@
 // src/pages/Dashboard/components/ProjectCards.tsx
 import React, { useState } from "react";
-import type { Project } from "../types";
+import type { Project } from "../../../services/api";
 
 interface ProjectCardsProps {
     projects: Project[];

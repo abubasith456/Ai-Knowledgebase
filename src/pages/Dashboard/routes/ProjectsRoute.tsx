@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
+import { useApp } from "../../../context/AppContext";
 import ProjectCards from "../components/ProjectCards";
 import SectionHeader from "../components/SectionHeader";
 import StatusBadge from "../components/StatusBadge";
