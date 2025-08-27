@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -35,3 +35,21 @@ class IndexOut(BaseModel):
 class PaginatedDocs(BaseModel):
     items: List[DocumentOut]
     total: int
+
+
+class QueryRequest(BaseModel):
+    index_id: str
+    query: str
+    n_results: int = Field(default=5, ge=1, le=20)
+
+
+class QueryResult(BaseModel):
+    document: str
+    metadata: Dict[str, Any]
+    distance: float
+
+
+class QueryResponse(BaseModel):
+    query: str
+    results: List[QueryResult]
+    total_results: int

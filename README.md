@@ -1,36 +1,78 @@
-# ⚡️ Vite + React + TypeScript + Tailwind CSS v4 Starter
+# ⚡️ Knowledge Base Console
 
-This is a lightweight, fast, and modern starter template using:
+A modern knowledge base management system with document parsing, indexing, and semantic search capabilities.
 
-- ✅ [Vite](https://vitejs.dev/) – blazing fast dev server
-- ✅ [React](https://reactjs.org/)
-- ✅ [TypeScript](https://www.typescriptlang.org/)
-- ✅ [Tailwind CSS v4 (next)](https://tailwindcss.com/)
+## 🚀 Features
 
----
+- **Document Management**: Upload and parse PDF, DOCX, MD, TXT files using Docling
+- **Project Organization**: Create and manage multiple knowledge base projects
+- **Smart Indexing**: Build searchable indexes from parsed documents
+- **Semantic Search**: Query your knowledge base using ChromaDB vector search
+- **Modern UI**: Clean, responsive interface built with React 19 and Tailwind CSS
 
 ## 📦 Getting Started
 
-### 1. Clone the repository
+### Backend Setup
 
+1. Navigate to the backend directory:
 ```bash
-git clone <project-repo-link>
+cd backend
 ```
 
-### 2. Navigate to the project directory
-
+2. Start the server:
 ```bash
-cd <project-folder>
+./start.sh
 ```
 
-### 3. Install dependencies
+The backend will be available at `http://localhost:8000`
 
+### Frontend Setup
+
+1. Install dependencies:
 ```bash
 npm install
 ```
 
-### 4. Start the development server
-
+2. Start the development server:
 ```bash
 npm run dev
 ```
+
+The frontend will be available at `http://localhost:5173`
+
+## 🔧 API Endpoints
+
+- `POST /projects` - Create a new project
+- `GET /projects` - List all projects
+- `POST /projects/{project_id}/documents` - Upload a document
+- `GET /projects/{project_id}/documents` - List project documents
+- `POST /projects/{project_id}/parse-next` - Parse next pending document
+- `POST /projects/{project_id}/indexes` - Create an index
+- `GET /projects/{project_id}/indexes` - List project indexes
+- `POST /query` - Query an index (requires project_id as param, index_id in body)
+
+## 📁 Project Structure
+
+```
+├── backend/                 # FastAPI backend
+│   ├── services/           # Business logic services
+│   ├── main.py            # API endpoints
+│   └── start.sh           # Startup script
+├── src/                    # React frontend
+│   ├── pages/             # Page components
+│   ├── components/        # Reusable UI components
+│   └── routes/            # Application routing
+└── package.json           # Frontend dependencies
+```
+
+## 🎯 Usage
+
+1. **Create a Project**: Start by creating a new knowledge base project
+2. **Upload Documents**: Add PDF, DOCX, MD, or TXT files to your project
+3. **Parse Documents**: Process documents to extract text and create chunks
+4. **Build Indexes**: Create searchable indexes from completed documents
+5. **Query Knowledge**: Use the Query tab to search your indexed documents
+
+## 🔍 Search
+
+The system uses ChromaDB for vector similarity search, allowing you to find relevant information even with natural language queries.

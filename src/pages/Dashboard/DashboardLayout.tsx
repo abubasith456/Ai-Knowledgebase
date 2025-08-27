@@ -73,6 +73,7 @@ const Sidebar: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClo
                     <div className="text-xs font-semibold text-slate-500 px-2">Navigation</div>
                     <SidebarLink to="/dashboard/projects" label="Project" onClick={onClose} />
                     <SidebarLink to="/dashboard/index" label="Index" onClick={onClose} />
+                    <SidebarLink to="/dashboard/query" label="Query" onClick={onClose} />
                 </nav>
             </div>
 
@@ -82,6 +83,7 @@ const Sidebar: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClo
                     <div className="text-xs font-semibold text-slate-500 px-2">Navigation</div>
                     <SidebarLink to="/dashboard/projects" label="Project" />
                     <SidebarLink to="/dashboard/index" label="Index" />
+                    <SidebarLink to="/dashboard/query" label="Query" />
                 </nav>
             </aside>
         </>

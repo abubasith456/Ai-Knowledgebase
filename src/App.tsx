@@ -5,6 +5,7 @@ import Root from './routes/Root';
 import DashboardLayout from './pages/Dashboard/DashboardLayout';
 import ProjectsRoute from './pages/Dashboard/routes/ProjectsRoute';
 import IndexRoute from './pages/Dashboard/routes/IndexRoute';
+import QueryRoute from './pages/Dashboard/routes/QueryRoute';
 
 
 const App: React.FC = () => {
@@ -21,6 +22,7 @@ const App: React.FC = () => {
           {/* Tabs in the left sidebar */}
           <Route path="projects" element={<ProjectsRoute />} />
           <Route path="index" element={<IndexRoute />} />
+          <Route path="query" element={<QueryRoute />} />
         </Route>
 
         {/* Fallback */}

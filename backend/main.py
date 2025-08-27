@@ -15,11 +15,12 @@ from services.schemas import (
     IndexCreate,
     IndexOut,
     PaginatedDocs,
+    QueryRequest,
+    QueryResponse,
 )
-from services.storage import JSONStore
+from services.storage import JSONStore, MarkdownStorage
 from services.parsing import parse_with_docling, build_embeddings_from_chunks
-from services.chroma_store import add_documents
-from services.dropbox_storage import upload_and_share_markdown
+from services.chroma_store import add_documents, query_documents
 
 # Ensure directories
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -36,6 +37,9 @@ indexes_store = JSONStore[dict](
     kv_path=f"{settings.STORE_DIR}/indexes.json",
     list_path=f"{settings.STORE_DIR}/indexes_by_project.json",
 )
+
+# Markdown storage
+markdown_storage = MarkdownStorage()
 
 app = FastAPI(title="KB Console Backend", version="0.2.0")
 
@@ -169,12 +173,11 @@ def _parse_and_store(doc_id: str):
     try:
         path = _file_path(d["id"], d["filename"])
         full_text, chunks = parse_with_docling(path)
-        # Upload parsed Markdown to Dropbox (from chunks -> combine)
+        
+        # Save parsed Markdown to local storage
         md_text = "\n\n".join(chunks)
-        try:
-            md_url = upload_and_share_markdown(d["project_id"], d["id"], md_text)
-        except Exception:
-            md_url = None  # Dropbox optional; backend continues
+        markdown_storage.save_markdown(d["project_id"], d["id"], md_text)
+        
         # Embed chunks to Chroma
         embeddings = build_embeddings_from_chunks(chunks)
         add_documents(
@@ -188,7 +191,7 @@ def _parse_and_store(doc_id: str):
             documents=chunks,
         )
         d["status"] = "completed"
-        d["md_url"] = md_url
+        d["md_url"] = f"local://{d['project_id']}/{d['id']}.md"
         docs_store.set(doc_id, d)
     except Exception:
         # Reset to pending to allow retry
@@ -254,3 +257,28 @@ def _finalize_index(index_id: str):
         return
     idx["status"] = "completed"
     indexes_store.set(index_id, idx)
+
+
+# Query endpoint
+@app.post("/query", response_model=QueryResponse)
+def query_index(project_id: str, payload: QueryRequest):
+    if not projects_store.get(project_id):
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Get the index
+    idx = indexes_store.get(payload.index_id)
+    if not idx or idx["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="Index not found")
+    
+    if idx["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Index not ready for querying")
+    
+    # Query the ChromaDB collection
+    collection_name = project_collection_name(project_id)
+    results = query_documents(collection_name, payload.query, payload.n_results or 5)
+    
+    return QueryResponse(
+        query=payload.query,
+        results=results,
+        total_results=len(results)
+    )
