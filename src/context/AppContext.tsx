@@ -20,12 +20,15 @@ type AppAction =
     | { type: 'SET_ERROR'; payload: string | null }
     | { type: 'SET_PROJECTS'; payload: Project[] }
     | { type: 'ADD_PROJECT'; payload: Project }
+    | { type: 'DELETE_PROJECT'; payload: string }
     | { type: 'SET_DOCUMENTS'; payload: { projectId: string; documents: Document[] } }
     | { type: 'ADD_DOCUMENT'; payload: { projectId: string; document: Document } }
     | { type: 'UPDATE_DOCUMENT'; payload: { projectId: string; documentId: string; updates: Partial<Document> } }
+    | { type: 'DELETE_DOCUMENT'; payload: { projectId: string; documentId: string } }
     | { type: 'SET_INDEXES'; payload: { projectId: string; indexes: Index[] } }
     | { type: 'ADD_INDEX'; payload: { projectId: string; index: Index } }
     | { type: 'UPDATE_INDEX'; payload: { projectId: string; indexId: string; updates: Partial<Index> } }
+    | { type: 'DELETE_INDEX'; payload: { projectId: string; indexId: string } }
     | { type: 'SET_ACTIVE_PROJECT'; payload: string | null };
 
 // Initial state
@@ -114,16 +117,19 @@ interface AppContextType extends AppState {
     createProject: (name: string) => Promise<void>;
     loadProjects: () => Promise<void>;
     setActiveProject: (projectId: string | null) => void;
+    deleteProject: (projectId: string) => Promise<void>;
     
     // Document actions
     uploadDocument: (projectId: string, file: File) => Promise<void>;
     loadDocuments: (projectId: string) => Promise<void>;
     parseNextDocument: (projectId: string) => Promise<void>;
+    deleteDocument: (projectId: string, documentId: string) => Promise<void>;
     
     // Index actions
     createIndex: (projectId: string, name: string, documentIds: string[]) => Promise<void>;
     loadIndexes: (projectId: string) => Promise<void>;
     startIndexing: (projectId: string, indexId: string) => Promise<void>;
+    deleteIndex: (projectId: string, indexId: string) => Promise<void>;
     
     // Query actions
     queryIndex: (projectId: string, queryData: QueryRequest) => Promise<QueryResponse>;
@@ -181,6 +187,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const setActiveProject = useCallback((projectId: string | null) => {
         dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
     }, []);
+
+    const deleteProject = useCallback(async (projectId: string) => {
+        try {
+            setError(null);
+            // Note: You'll need to implement deleteProject in your API
+            // For now, we'll just remove it from the local state
+            dispatch({ type: 'DELETE_PROJECT', payload: projectId });
+            // If this was the active project, clear it
+            if (state.activeProjectId === projectId) {
+                dispatch({ type: 'SET_ACTIVE_PROJECT', payload: null });
+            }
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Failed to delete project');
+        }
+    }, [setError, state.activeProjectId]);
 
     const uploadDocument = useCallback(async (projectId: string, file: File) => {
         try {
@@ -241,6 +262,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         }
     }, [state.documents, parseNextDocument]);
 
+    const deleteDocument = useCallback(async (projectId: string, documentId: string) => {
+        try {
+            setError(null);
+            // Note: You'll need to implement deleteDocument in your API
+            // For now, we'll just remove it from the local state
+            dispatch({ type: 'DELETE_DOCUMENT', payload: { projectId, documentId } });
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Failed to delete document');
+        }
+    }, [setError]);
+
     const createIndex = useCallback(async (projectId: string, name: string, documentIds: string[]) => {
         try {
             setLoading(true);
@@ -278,6 +310,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         }
     }, [setError]);
 
+    const deleteIndex = useCallback(async (projectId: string, indexId: string) => {
+        try {
+            setError(null);
+            // Note: You'll need to implement deleteIndex in your API
+            // For now, we'll just remove it from the local state
+            dispatch({ type: 'DELETE_INDEX', payload: { projectId, indexId } });
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Failed to delete index');
+        }
+    }, [setError]);
+
     const queryIndex = useCallback(async (projectId: string, queryData: QueryRequest): Promise<QueryResponse> => {
         try {
             setError(null);
@@ -296,12 +339,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         createProject,
         loadProjects,
         setActiveProject,
+        deleteProject,
         uploadDocument,
         loadDocuments,
         parseNextDocument,
+        deleteDocument,
         createIndex,
         loadIndexes,
         startIndexing,
+        deleteIndex,
         queryIndex,
         clearError,
     };
