@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
 import { projectsApi, documentsApi, indexesApi } from '../services/api/projects';
 import { queryApi } from '../services/api/query';
 import type { Project, Document, Index } from '../services/api/projects';
@@ -147,10 +147,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         loadProjects();
     }, []);
 
-    const setLoading = (loading: boolean) => dispatch({ type: 'SET_LOADING', payload: loading });
-    const setError = (error: string | null) => dispatch({ type: 'SET_ERROR', payload: error });
+    const setLoading = useCallback((loading: boolean) => dispatch({ type: 'SET_LOADING', payload: loading }), []);
+    const setError = useCallback((error: string | null) => dispatch({ type: 'SET_ERROR', payload: error }), []);
 
-    const createProject = async (name: string) => {
+    const createProject = useCallback(async (name: string) => {
         try {
             setLoading(true);
             setError(null);
@@ -163,9 +163,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setLoading, setError]);
 
-    const loadProjects = async () => {
+    const loadProjects = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
@@ -176,13 +176,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const setActiveProject = (projectId: string | null) => {
+    const setActiveProject = useCallback((projectId: string | null) => {
         dispatch({ type: 'SET_ACTIVE_PROJECT', payload: projectId });
-    };
+    }, []);
 
-    const uploadDocument = async (projectId: string, file: File) => {
+    const uploadDocument = useCallback(async (projectId: string, file: File) => {
         try {
             setLoading(true);
             setError(null);
@@ -194,9 +194,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setLoading, setError]);
 
-    const loadDocuments = async (projectId: string) => {
+    const loadDocuments = useCallback(async (projectId: string) => {
         try {
             setLoading(true);
             setError(null);
@@ -207,9 +207,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setLoading, setError]);
 
-    const parseNextDocument = async (projectId: string) => {
+    const parseNextDocument = useCallback(async (projectId: string) => {
         try {
             setError(null);
             const document = await documentsApi.parseNext(projectId);
@@ -219,9 +219,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to parse document');
         }
-    };
+    }, []);
 
-    const createIndex = async (projectId: string, name: string, documentIds: string[]) => {
+    const createIndex = useCallback(async (projectId: string, name: string, documentIds: string[]) => {
         try {
             setLoading(true);
             setError(null);
@@ -233,9 +233,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setLoading, setError]);
 
-    const loadIndexes = async (projectId: string) => {
+    const loadIndexes = useCallback(async (projectId: string) => {
         try {
             setLoading(true);
             setError(null);
@@ -246,9 +246,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [setLoading, setError]);
 
-    const startIndexing = async (projectId: string, indexId: string) => {
+    const startIndexing = useCallback(async (projectId: string, indexId: string) => {
         try {
             setError(null);
             const index = await indexesApi.start(projectId, indexId);
@@ -256,9 +256,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to start indexing');
         }
-    };
+    }, [setError]);
 
-    const queryIndex = async (projectId: string, queryData: QueryRequest): Promise<QueryResponse> => {
+    const queryIndex = useCallback(async (projectId: string, queryData: QueryRequest): Promise<QueryResponse> => {
         try {
             setError(null);
             const response = await queryApi.query(projectId, queryData);
@@ -267,9 +267,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             setError(error instanceof Error ? error.message : 'Failed to query index');
             throw error;
         }
-    };
+    }, [setError]);
 
-    const clearError = () => setError(null);
+    const clearError = useCallback(() => setError(null), []);
 
     const value: AppContextType = {
         ...state,
