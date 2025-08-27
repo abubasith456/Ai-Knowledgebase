@@ -120,12 +120,15 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     
     try:
+        print(f"🚀 Starting project deletion for: {project_id}")
+        
         # Delete all documents in the project
         doc_ids = docs_store.list_get(project_id) or []
+        print(f"Found {len(doc_ids)} documents to delete")
         for doc_id in doc_ids:
             doc = docs_store.get(doc_id)
             if doc:
-
+                print(f"Deleting document: {doc_id} ({doc['filename']}) - Status: {doc.get('status', 'unknown')}")
                 
                 # Remove file (could be original or .md file)
                 try:
@@ -133,26 +136,33 @@ def delete_project(project_id: str):
                     file_path = os.path.join(settings.UPLOAD_DIR, doc['filename'])
                     if os.path.exists(file_path):
                         os.remove(file_path)
-                        print(f"Deleted file: {file_path}")
+                        print(f"✅ Deleted file: {file_path}")
                     else:
-                        print(f"File not found (already deleted): {file_path}")
+                        print(f"⚠️ File not found (already deleted): {file_path}")
                 except Exception as e:
-                    print(f"File deletion failed: {e}")
+                    print(f"❌ File deletion failed: {e}")
                 
                 # Remove from storage
                 docs_store.delete(doc_id)
+                print(f"✅ Removed document from storage: {doc_id}")
         
         # Delete all indexes in the project
         index_ids = indexes_store.list_get(project_id) or []
+        print(f"Found {len(index_ids)} indexes to delete")
         for index_id in index_ids:
+            print(f"Deleting index: {index_id}")
             indexes_store.delete(index_id)
+            print(f"✅ Deleted index: {index_id}")
         
         # Remove project lists
+        print(f"Cleaning up project lists...")
         docs_store.list_remove_all(project_id)
         indexes_store.list_remove_all(project_id)
+        print(f"✅ Project lists cleaned up")
         
         # Delete the project
         projects_store.delete(project_id)
+        print(f"✅ Project deleted: {project_id}")
         
         return {"message": "Project deleted successfully"}
         
@@ -260,7 +270,16 @@ def _parse_and_store(doc_id: str):
         
         print(f"[{doc_id}] 🚀 Starting background parsing task for: {d['filename']}")
         
-        path = _file_path(d["id"], d["filename"])
+        # Check if the file exists before trying to parse it
+        path = os.path.join(settings.UPLOAD_DIR, d["filename"])
+        if not os.path.exists(path):
+            print(f"[{doc_id}] ❌ File not found: {path}")
+            d["status"] = "failed"
+            d["error_message"] = "File not found during parsing"
+            d["last_error_at"] = time.time()
+            docs_store.set(doc_id, d)
+            return
+        
         print(f"[{doc_id}] 📁 File path: {path}")
         
         # Parse document using our simple parser (no chunking)
