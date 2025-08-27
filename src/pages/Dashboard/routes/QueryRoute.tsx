@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useApp } from "../../context/AppContext";
+import { useApp } from "../../../context/AppContext";
 import SectionHeader from "../components/SectionHeader";
 import StatusBadge from "../components/StatusBadge";
 import type { QueryResponse } from "../../../services/api/query";
