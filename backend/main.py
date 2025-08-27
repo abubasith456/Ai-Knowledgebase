@@ -66,8 +66,6 @@ def _doc_out(d: dict) -> DocumentOut:
         filename=d["filename"],
         status=d["status"],
         md_url=d.get("md_url"),
-        chunk_count=d.get("chunk_count"),
-        total_characters=d.get("total_characters"),
         uploaded_at=d.get("uploaded_at"),
         processing_started=d.get("processing_started"),
         processing_started_at=d.get("processing_started_at"),
@@ -168,7 +166,7 @@ def delete_project(project_id: str):
 
 # Documents
 @app.post("/projects/{project_id}/documents", response_model=DocumentOut)
-async def upload_document(project_id: str, file: UploadFile = File(...), background_tasks: BackgroundTasks):
+async def upload_document(project_id: str, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     if not projects_store.get(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
     
@@ -274,9 +272,9 @@ def _parse_and_store(doc_id: str):
         path = _file_path(d["id"], d["filename"])
         print(f"[{doc_id}] 📁 File path: {path}")
         
-                  # Parse document using our simple parser (no chunking)
-          full_text, _ = parse_with_docling(path)
-          print(f"[{doc_id}] ✅ Document parsed successfully")
+        # Parse document using our simple parser (no chunking)
+        full_text, _ = parse_with_docling(path)
+        print(f"[{doc_id}] ✅ Document parsed successfully")
         
         # Upload parsed Markdown to Dropbox
         md_url = None
@@ -288,22 +286,12 @@ def _parse_and_store(doc_id: str):
             print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
             # Dropbox optional; backend continues
         
-                  # Upload parsed Markdown to Dropbox
-          md_url = None
-          try:
-              print(f"[{doc_id}] ☁️ Uploading markdown to Dropbox...")
-              md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
-              print(f"[{doc_id}] ✅ Markdown uploaded to Dropbox: {md_url}")
-          except Exception as e:
-              print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
-              # Dropbox optional; backend continues
-        
-                  # Update document status to completed with all metadata
-          d["status"] = "completed"
-          d["md_url"] = md_url
-          d["completed_at"] = time.time()
-          d["processing_duration"] = d["completed_at"] - d["processing_started_at"]
-          docs_store.set(doc_id, d)
+        # Update document status to completed with all metadata
+        d["status"] = "completed"
+        d["md_url"] = md_url
+        d["completed_at"] = time.time()
+        d["processing_duration"] = d["completed_at"] - d["processing_started_at"]
+        docs_store.set(doc_id, d)
         
         print(f"[{doc_id}] 🎉 Document processing completed successfully in {d['processing_duration']:.2f}s")
         
