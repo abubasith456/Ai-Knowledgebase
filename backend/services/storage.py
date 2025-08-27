@@ -99,3 +99,15 @@ class JSONStore(Generic[T]):
                 self.list_path.write_text(json.dumps(data, indent=2))
         except (json.JSONDecodeError, FileNotFoundError):
             pass
+
+    def list_remove_all(self, list_key: str) -> None:
+        """Remove all items from a list key"""
+        if not self.list_path:
+            return
+        try:
+            data = json.loads(self.list_path.read_text())
+            if list_key in data:
+                del data[list_key]
+                self.list_path.write_text(json.dumps(data, indent=2))
+        except (json.JSONDecodeError, FileNotFoundError):
+            pass

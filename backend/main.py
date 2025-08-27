@@ -86,11 +86,7 @@ def _idx_out(x: dict) -> IndexOut:
     )
 
 
-def _file_path(doc_id: str, filename: str) -> str:
-    path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{filename}")
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
-    return path
+
 
 
 # Projects
