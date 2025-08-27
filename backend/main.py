@@ -134,7 +134,14 @@ def delete_project(project_id: str):
                         os.remove(file_path)
                         print(f"✅ Deleted file: {file_path}")
                     else:
-                        print(f"⚠️ File not found (already deleted): {file_path}")
+                        # Try to find the file with the original naming pattern
+                        original_filename = f"{doc_id}_{doc['filename']}"
+                        original_path = os.path.join(settings.UPLOAD_DIR, original_filename)
+                        if os.path.exists(original_path):
+                            os.remove(original_path)
+                            print(f"✅ Deleted original file: {original_path}")
+                        else:
+                            print(f"⚠️ File not found (already deleted): {file_path}")
                 except Exception as e:
                     print(f"❌ File deletion failed: {e}")
                 
@@ -171,6 +178,13 @@ def delete_project(project_id: str):
 async def upload_document(project_id: str, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     if not projects_store.get(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check for duplicate filename in this project
+    existing_docs = docs_store.list_get(project_id) or []
+    for doc_id in existing_docs:
+        doc = docs_store.get(doc_id)
+        if doc and doc["filename"] == file.filename:
+            raise HTTPException(status_code=400, detail=f"File '{file.filename}' already exists in this project")
     
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
     filename = file.filename
@@ -234,7 +248,14 @@ def delete_document(project_id: str, document_id: str):
                 os.remove(file_path)
                 print(f"Deleted file: {file_path}")
             else:
-                print(f"File not found (already deleted): {file_path}")
+                # Try to find the file with the original naming pattern
+                original_filename = f"{document_id}_{doc['filename']}"
+                original_path = os.path.join(settings.UPLOAD_DIR, original_filename)
+                if os.path.exists(original_path):
+                    os.remove(original_path)
+                    print(f"Deleted original file: {original_path}")
+                else:
+                    print(f"File not found (already deleted): {file_path}")
         except Exception as e:
             print(f"File deletion failed: {e}")
         
@@ -303,6 +324,8 @@ def _parse_and_store(doc_id: str):
             
             print(f"[{doc_id}] 💾 Saved parsed content to: {md_path}")
             
+            # Note: We'll delete this local file after Dropbox upload
+            
         except Exception as e:
             print(f"[{doc_id}] ❌ Failed to save markdown file: {e}")
             # Continue with Dropbox upload even if local file save fails
@@ -313,6 +336,17 @@ def _parse_and_store(doc_id: str):
             print(f"[{doc_id}] ☁️ Uploading markdown to Dropbox...")
             md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
             print(f"[{doc_id}] ✅ Markdown uploaded to Dropbox: {md_url}")
+            
+            # After successful Dropbox upload, delete the local .md file
+            try:
+                if os.path.exists(md_path):
+                    os.remove(md_path)
+                    print(f"[{doc_id}] 🗑️ Deleted local .md file after Dropbox upload: {md_path}")
+                else:
+                    print(f"[{doc_id}] ⚠️ Local .md file not found for deletion: {md_path}")
+            except Exception as e:
+                print(f"[{doc_id}] ❌ Failed to delete local .md file: {e}")
+                
         except Exception as e:
             print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
             # Dropbox optional; backend continues
