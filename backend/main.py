@@ -318,6 +318,15 @@ def _parse_and_store(doc_id: str):
         full_text, _ = parse_with_docling(path)
         print(f"[{doc_id}] ✅ Document parsed successfully")
         
+        # Print parsed content preview to terminal (limit to 2000 chars)
+        try:
+            preview_limit = 2000
+            preview = full_text[:preview_limit]
+            print(f"[{doc_id}] 📝 Parsed content length: {len(full_text)} chars")
+            print(f"[{doc_id}] 📝 Parsed content preview (first {min(len(full_text), preview_limit)} chars):\n{preview}")
+        except Exception as e:
+            print(f"[{doc_id}] ⚠️ Failed to print parsed content preview: {e}")
+        
         # Replace the original file with parsed markdown content
         try:
             # Create .md filename derived from original name
