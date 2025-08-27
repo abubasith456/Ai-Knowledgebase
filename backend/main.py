@@ -290,10 +290,22 @@ def _parse_and_store(doc_id: str):
         
         print(f"[{doc_id}] 🚀 Starting background parsing task for: {d['filename']}")
         
-        # Check if the file exists before trying to parse it
-        path = os.path.join(settings.UPLOAD_DIR, d["stored_filename"])
-        if not os.path.exists(path):
-            print(f"[{doc_id}] ❌ File not found: {path}")
+        # Resolve the on-disk path robustly
+        candidate_names = []
+        if d.get("stored_filename"):
+            candidate_names.append(d["stored_filename"])  # preferred
+        candidate_names.append(f"{doc_id}_{d['filename']}")  # legacy pattern
+        candidate_names.append(d["filename"])  # raw filename (last resort)
+        
+        path = None
+        for name in candidate_names:
+            p = os.path.join(settings.UPLOAD_DIR, name)
+            if os.path.exists(p):
+                path = p
+                break
+        
+        if not path:
+            print(f"[{doc_id}] ❌ File not found. Tried: " + ", ".join(os.path.join(settings.UPLOAD_DIR, n) for n in candidate_names))
             d["status"] = "failed"
             d["error_message"] = "File not found during parsing"
             d["last_error_at"] = time.time()
