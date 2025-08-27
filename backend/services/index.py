@@ -8,6 +8,12 @@ try:
 except Exception:
     PdfReader = None  # optional dependency
 
+try:
+    # pdfminer for better OCR-less extraction on complex PDFs
+    from pdfminer.high_level import extract_text as pdfminer_extract_text
+except Exception:
+    pdfminer_extract_text = None
+
 def auto_chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> List[str]:
     """
     Automatically chunk text with intelligent splitting and overlap.
@@ -102,26 +108,30 @@ def parse_document_simple(file_path: str) -> Tuple[str, List[str]]:
             # Python files
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-        elif file_path.suffix.lower() == '.pdf' and PdfReader is not None:
-            # Try to extract text from PDF
-            try:
-                reader = PdfReader(str(file_path))
-                parts: List[str] = []
-                for page in reader.pages:
-                    text = page.extract_text() or ""
-                    if text:
-                        parts.append(text)
-                content = "\n\n".join(parts).strip()
-                if not content:
-                    # No extractable text found
-                    with open(file_path, 'rb') as f:
-                        data = f.read()
-                    content = f"Binary PDF with no extractable text: {file_path.name} ({len(data)} bytes)"
-            except Exception:
-                # Fallback to binary notice
+        elif file_path.suffix.lower() == '.pdf':
+            # Try pypdf first
+            content = ""
+            if PdfReader is not None:
+                try:
+                    reader = PdfReader(str(file_path))
+                    parts: List[str] = []
+                    for page in reader.pages:
+                        text = page.extract_text() or ""
+                        if text:
+                            parts.append(text)
+                    content = "\n\n".join(parts).strip()
+                except Exception:
+                    content = ""
+            # Fallback to pdfminer if needed
+            if (not content) and pdfminer_extract_text is not None:
+                try:
+                    content = (pdfminer_extract_text(str(file_path)) or "").strip()
+                except Exception:
+                    content = ""
+            if not content:
                 with open(file_path, 'rb') as f:
                     data = f.read()
-                content = f"Binary PDF (failed to extract text): {file_path.name} ({len(data)} bytes)"
+                content = f"Binary PDF (no extractable text): {file_path.name} ({len(data)} bytes)"
         else:
             # Try to read as text, fallback to binary
             try:

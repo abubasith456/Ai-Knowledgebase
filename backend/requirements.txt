@@ -8,3 +8,5 @@ dropbox
 tiktoken
 torch
 sentence-transformers
+pypdf
+pdfminer.six
