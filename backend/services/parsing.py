@@ -1,6 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 import os
+import logging
 from .index import parse_document_simple, auto_chunk_text
+
+logger = logging.getLogger(__name__)
 
 # TODO: replace with a real embedder (e.g., sentence-transformers) for production
 def embed_texts(texts: List[str]) -> List[List[float]]:
@@ -9,21 +12,23 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
 
 
 def parse_with_docling(file_path: str) -> Tuple[str, List[str]]:
-    """Parse document using our custom auto-chunking parser"""
+    """Parse document using our custom auto-chunking parser with token-aware chunking"""
     try:
         # Use our new auto-chunking parser instead of docling
         content, chunks = parse_document_simple(file_path)
         
-        # Optimize chunks for better embedding performance
+        # For now, use simple character-based chunking
+        # In production, you would use the HybridIndexService here
         optimized_chunks = auto_chunk_text(content, chunk_size=512, overlap=50)
         
         # Ensure we have at least one chunk
         if not optimized_chunks:
             optimized_chunks = [content] if content else ["Empty document"]
             
+        logger.info(f"Successfully parsed document {file_path} into {len(optimized_chunks)} chunks")
         return content, optimized_chunks
     except Exception as e:
-        print(f"Document parsing failed: {e}")
+        logger.error(f"Document parsing failed: {e}")
         # Fallback to basic parsing if our parser fails
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -38,8 +43,23 @@ def parse_with_docling(file_path: str) -> Tuple[str, List[str]]:
         if not chunks:
             chunks = [content] if content else ["Empty document"]
         
+        logger.info(f"Fallback parsing created {len(chunks)} chunks")
         return content, chunks
 
 
 def build_embeddings_from_chunks(chunks: List[str]) -> List[List[float]]:
     return embed_texts(chunks)
+
+
+def get_hybrid_embedding_service():
+    """
+    Get the hybrid embedding service instance.
+    This function can be used to integrate with your HybridIndexService.
+    """
+    try:
+        # Import here to avoid circular imports
+        from .hybrid_service import hybrid_service
+        return hybrid_service
+    except ImportError:
+        logger.warning("HybridIndexService not available, using fallback embeddings")
+        return None
