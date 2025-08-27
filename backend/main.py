@@ -51,8 +51,8 @@ app.add_middleware(
 )
 
 
-def project_collection_name(project_id: str) -> str:
-    return f"proj_{project_id}_chunks"
+def index_collection_name(index_id: str) -> str:
+    return f"index_{index_id}_chunks"
 
 
 def _proj_out(p: dict) -> ProjectOut:
@@ -125,17 +125,7 @@ def delete_project(project_id: str):
         for doc_id in doc_ids:
             doc = docs_store.get(doc_id)
             if doc:
-                # Remove from ChromaDB (optional - collection might not exist)
-                try:
-                    from services.chroma_store import delete_documents
-                    delete_documents(
-                        collection_name=project_collection_name(project_id),
-                        filter_metadata={"project_id": project_id}
-                    )
-                    print(f"Removed documents from ChromaDB collection: {project_collection_name(project_id)}")
-                except Exception as e:
-                    print(f"ChromaDB deletion failed for project {project_id} (collection might not exist): {e}")
-                    # This is not critical - continue with deletion
+
                 
                 # Remove file (could be original or .md file)
                 try:
@@ -224,17 +214,7 @@ def delete_document(project_id: str, document_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
     
     try:
-        # Remove from ChromaDB collection (optional - collection might not exist)
-        try:
-            from services.chroma_store import delete_documents
-            delete_documents(
-                collection_name=project_collection_name(project_id),
-                filter_metadata={"doc_id": document_id}
-            )
-            print(f"Removed document from ChromaDB collection: {project_collection_name(project_id)}")
-        except Exception as e:
-            print(f"ChromaDB deletion failed (collection might not exist): {e}")
-            # Continue with local deletion even if ChromaDB fails
+
         
         # Remove from local storage
         docs_store.delete(document_id)
@@ -404,6 +384,16 @@ def delete_index(project_id: str, index_id: str):
         raise HTTPException(status_code=404, detail="Index not found")
     
     try:
+        # Remove ChromaDB collection for this index
+        try:
+            from services.chroma_store import delete_collection
+            collection_name = index_collection_name(index_id)
+            delete_collection(collection_name)
+            print(f"Deleted ChromaDB collection: {collection_name}")
+        except Exception as e:
+            print(f"ChromaDB collection deletion failed: {e}")
+            # Continue with local deletion even if ChromaDB fails
+        
         # Remove from storage
         indexes_store.delete(index_id)
         indexes_store.list_remove(project_id, index_id)
@@ -415,12 +405,69 @@ def delete_index(project_id: str, index_id: str):
 
 
 def _finalize_index(index_id: str):
+    """Create ChromaDB collection and add documents for this index"""
     time.sleep(1.2)  # simulate processing
     idx = indexes_store.get(index_id)
     if not idx:
         return
-    idx["status"] = "completed"
-    indexes_store.set(index_id, idx)
+    
+    try:
+        # Create ChromaDB collection for this index
+        collection_name = index_collection_name(index_id)
+        print(f"Creating ChromaDB collection: {collection_name}")
+        
+        # Get all documents for this index
+        doc_ids = idx["document_ids"]
+        all_chunks = []
+        all_embeddings = []
+        all_metadatas = []
+        
+        for doc_id in doc_ids:
+            doc = docs_store.get(doc_id)
+            if doc and doc["status"] == "completed":
+                # Read the markdown file
+                md_path = os.path.join(settings.UPLOAD_DIR, doc["filename"])
+                if os.path.exists(md_path):
+                    with open(md_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    
+                    # Simple chunking (you can replace this with your HybridIndexService)
+                    chunks = [content[i:i+1000] for i in range(0, len(content), 1000)]
+                    
+                    # Simple embeddings (you can replace this with your HybridIndexService)
+                    embeddings = [[float(len(chunk) % 7)] * 8 for chunk in chunks]
+                    
+                    # Add to collections
+                    for i, chunk in enumerate(chunks):
+                        all_chunks.append(chunk)
+                        all_embeddings.append(embeddings[i])
+                        all_metadatas.append({
+                            "project_id": idx["project_id"],
+                            "doc_id": doc_id,
+                            "index_id": index_id,
+                            "chunk_index": i
+                        })
+        
+        # Add documents to ChromaDB
+        if all_chunks:
+            from services.chroma_store import add_documents
+            add_documents(
+                collection_name=collection_name,
+                ids=[f"{index_id}_{i}" for i in range(len(all_chunks))],
+                embeddings=all_embeddings,
+                metadatas=all_metadatas,
+                documents=all_chunks
+            )
+            print(f"Added {len(all_chunks)} chunks to ChromaDB collection: {collection_name}")
+        
+        idx["status"] = "completed"
+        indexes_store.set(index_id, idx)
+        print(f"Index {index_id} completed successfully")
+        
+    except Exception as e:
+        print(f"Failed to finalize index {index_id}: {e}")
+        idx["status"] = "failed"
+        indexes_store.set(index_id, idx)
 
 
 # Query endpoint
@@ -437,8 +484,8 @@ def query_index(project_id: str, payload: QueryRequest):
     if idx["status"] != "completed":
         raise HTTPException(status_code=400, detail="Index not ready for querying")
     
-    # Query the ChromaDB collection
-    collection_name = project_collection_name(project_id)
+    # Query the ChromaDB collection for this specific index
+    collection_name = index_collection_name(payload.index_id)
     results = query_documents(collection_name, payload.query, payload.n_results or 5)
     
     return QueryResponse(
