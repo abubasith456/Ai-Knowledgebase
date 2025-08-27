@@ -219,11 +219,11 @@ const ProjectsRoute: React.FC = () => {
                                                 <span className="text-xs text-yellow-600">Queued for processing</span>
                                             </div>
                                         )}
-                                        {doc.status === "completed" && doc.chunk_count && (
-                                            <div className="text-xs text-green-600 mt-1">
-                                                ✅ {doc.chunk_count} chunks created
-                                            </div>
-                                        )}
+                                                                                  {doc.status === "completed" && (
+                                              <div className="text-xs text-green-600 mt-1">
+                                                  ✅ Parsing completed
+                                              </div>
+                                          )}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">

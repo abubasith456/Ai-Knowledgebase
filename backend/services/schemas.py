@@ -18,8 +18,6 @@ class DocumentOut(BaseModel):
     filename: str
     status: str
     md_url: str | None = None
-    chunk_count: int | None = None
-    total_characters: int | None = None
     uploaded_at: float | None = None
     processing_started: bool | None = None
     processing_started_at: float | None = None

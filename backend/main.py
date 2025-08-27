@@ -19,8 +19,8 @@ from services.schemas import (
     QueryResponse,
 )
 from services.storage import JSONStore
-from services.parsing import parse_with_docling, build_embeddings_from_chunks
-from services.chroma_store import add_documents, query_documents
+from services.parsing import parse_with_docling
+from services.chroma_store import query_documents
 from services.dropbox_storage import upload_and_share_markdown
 
 # Ensure directories
@@ -274,9 +274,9 @@ def _parse_and_store(doc_id: str):
         path = _file_path(d["id"], d["filename"])
         print(f"[{doc_id}] 📁 File path: {path}")
         
-        # Parse document using our new auto-chunking parser
-        full_text, chunks = parse_with_docling(path)
-        print(f"[{doc_id}] ✅ Document parsed successfully into {len(chunks)} chunks")
+                  # Parse document using our simple parser (no chunking)
+          full_text, _ = parse_with_docling(path)
+          print(f"[{doc_id}] ✅ Document parsed successfully")
         
         # Upload parsed Markdown to Dropbox
         md_url = None
@@ -288,57 +288,22 @@ def _parse_and_store(doc_id: str):
             print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
             # Dropbox optional; backend continues
         
-        # Use hybrid service for better embeddings if available
-        try:
-            from services.hybrid_service import hybrid_service
-            print(f"[{doc_id}] 🧠 Using hybrid service for embeddings...")
-            
-            # Count tokens for the full text (simple fallback)
-            token_count = len(full_text.split())
-            
-            # Generate embeddings using hybrid service
-            success, embeddings, message, optimized_chunks = hybrid_service.embed_document_text(
-                full_text, token_count
-            )
-            
-            if success and embeddings:
-                print(f"[{doc_id}] ✅ Hybrid service generated {len(embeddings)} embeddings")
-                # Use optimized chunks if available, otherwise use original chunks
-                final_chunks = optimized_chunks if optimized_chunks else chunks
-                final_embeddings = embeddings
-            else:
-                print(f"[{doc_id}] ⚠️ Hybrid service failed: {message}, falling back to basic embeddings")
-                # Fallback to basic embeddings
-                final_chunks = chunks
-                final_embeddings = build_embeddings_from_chunks(chunks)
-                
-        except Exception as e:
-            print(f"[{doc_id}] ❌ Hybrid service error: {e}, using fallback embeddings")
-            # Fallback to basic embeddings
-            final_chunks = chunks
-            final_embeddings = build_embeddings_from_chunks(chunks)
+                  # Upload parsed Markdown to Dropbox
+          md_url = None
+          try:
+              print(f"[{doc_id}] ☁️ Uploading markdown to Dropbox...")
+              md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
+              print(f"[{doc_id}] ✅ Markdown uploaded to Dropbox: {md_url}")
+          except Exception as e:
+              print(f"[{doc_id}] ❌ Dropbox upload failed: {e}")
+              # Dropbox optional; backend continues
         
-        # Store to ChromaDB
-        print(f"[{doc_id}] 💾 Storing {len(final_chunks)} chunks to ChromaDB...")
-        add_documents(
-            collection_name=project_collection_name(d["project_id"]),
-            ids=[f"{doc_id}_{i}" for i in range(len(final_chunks))],
-            embeddings=final_embeddings,
-            metadatas=[
-                {"project_id": d["project_id"], "doc_id": doc_id, "chunk_index": i}
-                for i in range(len(final_chunks))
-            ],
-            documents=final_chunks,
-        )
-        
-        # Update document status to completed with all metadata
-        d["status"] = "completed"
-        d["md_url"] = md_url
-        d["chunk_count"] = len(final_chunks)
-        d["total_characters"] = len(full_text)
-        d["completed_at"] = time.time()
-        d["processing_duration"] = d["completed_at"] - d["processing_started_at"]
-        docs_store.set(doc_id, d)
+                  # Update document status to completed with all metadata
+          d["status"] = "completed"
+          d["md_url"] = md_url
+          d["completed_at"] = time.time()
+          d["processing_duration"] = d["completed_at"] - d["processing_started_at"]
+          docs_store.set(doc_id, d)
         
         print(f"[{doc_id}] 🎉 Document processing completed successfully in {d['processing_duration']:.2f}s")
         
