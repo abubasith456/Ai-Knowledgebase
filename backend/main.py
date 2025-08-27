@@ -65,6 +65,9 @@ def _doc_out(d: dict) -> DocumentOut:
         project_id=d["project_id"],
         filename=d["filename"],
         status=d["status"],
+        md_url=d.get("md_url"),
+        chunk_count=d.get("chunk_count"),
+        total_characters=d.get("total_characters"),
     )
 
 
@@ -107,14 +110,19 @@ def list_projects():
 
 # Documents
 @app.post("/projects/{project_id}/documents", response_model=DocumentOut)
-async def upload_document(project_id: str, file: UploadFile = File(...)):
+async def upload_document(project_id: str, file: UploadFile = File(...), background_tasks: BackgroundTasks):
     if not projects_store.get(project_id):
         raise HTTPException(status_code=404, detail="Project not found")
+    
     doc_id = f"doc_{uuid.uuid4().hex[:8]}"
     filename = file.filename
     path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{filename}")
+    
+    # Save the uploaded file
     with open(path, "wb") as out:
         shutil.copyfileobj(file.file, out)
+    
+    # Create document record
     d = {
         "id": doc_id,
         "project_id": project_id,
@@ -124,6 +132,10 @@ async def upload_document(project_id: str, file: UploadFile = File(...)):
     }
     docs_store.set(doc_id, d)
     docs_store.list_append_unique_front(project_id, doc_id)
+    
+    # Start background parsing task immediately
+    background_tasks.add_task(_parse_and_store, doc_id)
+    
     return _doc_out(d)
 
 
@@ -137,7 +149,7 @@ def list_documents(project_id: str, skip: int = 0, limit: int = 100):
     return PaginatedDocs(items=[_doc_out(d) for d in page], total=len(items))
 
 
-# Parsing queue controls one-at-a-time
+# Manual parsing trigger (for retry purposes)
 @app.post("/projects/{project_id}/parse-next", response_model=Optional[DocumentOut])
 def parse_next(project_id: str, background_tasks: BackgroundTasks):
     if not projects_store.get(project_id):
@@ -168,34 +180,84 @@ def _parse_and_store(doc_id: str):
     d = docs_store.get(doc_id)
     if not d:
         return
+    
     try:
+        # Update status to parsing
+        d["status"] = "parsing"
+        docs_store.set(doc_id, d)
+        
         path = _file_path(d["id"], d["filename"])
+        print(f"Starting to parse document: {path}")
+        
+        # Parse document using our new auto-chunking parser
         full_text, chunks = parse_with_docling(path)
+        print(f"Document parsed successfully into {len(chunks)} chunks")
         
         # Upload parsed Markdown to Dropbox
+        md_url = None
         try:
             md_url = upload_and_share_markdown(d["project_id"], d["id"], full_text)
+            print(f"Markdown uploaded to Dropbox: {md_url}")
         except Exception as e:
             print(f"Dropbox upload failed: {e}")
-            md_url = None  # Dropbox optional; backend continues
+            # Dropbox optional; backend continues
         
-        # Embed chunks to Chroma
-        embeddings = build_embeddings_from_chunks(chunks)
+        # Use hybrid service for better embeddings if available
+        try:
+            from services.hybrid_service import hybrid_service
+            print("Using hybrid service for embeddings...")
+            
+            # Count tokens for the full text (simple fallback)
+            token_count = len(full_text.split())
+            
+            # Generate embeddings using hybrid service
+            success, embeddings, message, optimized_chunks = hybrid_service.embed_document_text(
+                full_text, token_count
+            )
+            
+            if success and embeddings:
+                print(f"Hybrid service generated {len(embeddings)} embeddings")
+                # Use optimized chunks if available, otherwise use original chunks
+                final_chunks = optimized_chunks if optimized_chunks else chunks
+                final_embeddings = embeddings
+            else:
+                print(f"Hybrid service failed: {message}, falling back to basic embeddings")
+                # Fallback to basic embeddings
+                final_chunks = chunks
+                final_embeddings = build_embeddings_from_chunks(chunks)
+                
+        except Exception as e:
+            print(f"Hybrid service error: {e}, using fallback embeddings")
+            # Fallback to basic embeddings
+            final_chunks = chunks
+            final_embeddings = build_embeddings_from_chunks(chunks)
+        
+        # Store to ChromaDB
+        print(f"Storing {len(final_chunks)} chunks to ChromaDB...")
         add_documents(
             collection_name=project_collection_name(d["project_id"]),
-            ids=[f"{doc_id}_{i}" for i in range(len(chunks))],
-            embeddings=embeddings,
+            ids=[f"{doc_id}_{i}" for i in range(len(final_chunks))],
+            embeddings=final_embeddings,
             metadatas=[
                 {"project_id": d["project_id"], "doc_id": doc_id, "chunk_index": i}
-                for i in range(len(chunks))
+                for i in range(len(final_chunks))
             ],
-            documents=chunks,
+            documents=final_chunks,
         )
+        
+        # Update document status to completed
         d["status"] = "completed"
         d["md_url"] = md_url
+        d["chunk_count"] = len(final_chunks)
+        d["total_characters"] = len(full_text)
         docs_store.set(doc_id, d)
+        
+        print(f"Document {doc_id} processing completed successfully")
+        
     except Exception as e:
-        print(f"Parsing failed: {e}")
+        print(f"Parsing failed for document {doc_id}: {e}")
+        import traceback
+        traceback.print_exc()
         # Reset to pending to allow retry
         d["status"] = "pending"
         docs_store.set(doc_id, d)

@@ -17,6 +17,9 @@ class DocumentOut(BaseModel):
     project_id: str
     filename: str
     status: str
+    md_url: str | None = None
+    chunk_count: int | None = None
+    total_characters: int | None = None
 
 
 class IndexCreate(BaseModel):
