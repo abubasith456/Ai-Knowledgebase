@@ -137,9 +137,10 @@ def delete_project(project_id: str):
                     print(f"ChromaDB deletion failed for project {project_id} (collection might not exist): {e}")
                     # This is not critical - continue with deletion
                 
-                # Remove file
+                # Remove file (could be original or .md file)
                 try:
-                    file_path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{doc['filename']}")
+                    # Try to remove the current filename (which might be .md now)
+                    file_path = os.path.join(settings.UPLOAD_DIR, doc['filename'])
                     if os.path.exists(file_path):
                         os.remove(file_path)
                         print(f"Deleted file: {file_path}")
@@ -179,7 +180,7 @@ async def upload_document(project_id: str, background_tasks: BackgroundTasks, fi
     filename = file.filename
     path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{filename}")
     
-    # Save the uploaded file
+    # Save the uploaded file temporarily (will be replaced with parsed .md)
     with open(path, "wb") as out:
         shutil.copyfileobj(file.file, out)
     
@@ -239,9 +240,10 @@ def delete_document(project_id: str, document_id: str):
         docs_store.delete(document_id)
         docs_store.list_remove(project_id, document_id)
         
-        # Remove file from uploads directory
+        # Remove file from uploads directory (could be original or .md file)
         try:
-            file_path = os.path.join(settings.UPLOAD_DIR, f"{document_id}_{doc['filename']}")
+            # Try to remove the current filename (which might be .md now)
+            file_path = os.path.join(settings.UPLOAD_DIR, doc['filename'])
             if os.path.exists(file_path):
                 os.remove(file_path)
                 print(f"Deleted file: {file_path}")
@@ -284,6 +286,31 @@ def _parse_and_store(doc_id: str):
         # Parse document using our simple parser (no chunking)
         full_text, _ = parse_with_docling(path)
         print(f"[{doc_id}] ✅ Document parsed successfully")
+        
+        # Replace the original file with parsed markdown content
+        try:
+            # Create .md filename
+            md_filename = f"{doc_id}_{os.path.splitext(d['filename'])[0]}.md"
+            md_path = os.path.join(settings.UPLOAD_DIR, md_filename)
+            
+            # Write parsed content to .md file
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(full_text)
+            
+            # Remove the original binary file
+            if os.path.exists(path):
+                os.remove(path)
+                print(f"[{doc_id}] 🗑️ Removed original binary file: {path}")
+            
+            # Update the document record with new filename
+            d["filename"] = md_filename
+            docs_store.set(doc_id, d)
+            
+            print(f"[{doc_id}] 💾 Saved parsed content to: {md_path}")
+            
+        except Exception as e:
+            print(f"[{doc_id}] ❌ Failed to save markdown file: {e}")
+            # Continue with Dropbox upload even if local file save fails
         
         # Upload parsed Markdown to Dropbox
         md_url = None
