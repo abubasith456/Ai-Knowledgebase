@@ -2,7 +2,9 @@ fastapi
 uvicorn[standard]
 python-multipart
 chromadb
-docling
 pydantic
 python-dotenv
 dropbox
+tiktoken
+torch
+sentence-transformers
