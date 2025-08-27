@@ -17,7 +17,6 @@ const ProjectsRoute: React.FC = () => {
         deleteProject,
         uploadDocument,
         loadDocuments,
-        parseNextDocument,
         deleteDocument,
     } = useApp();
 
@@ -40,21 +39,28 @@ const ProjectsRoute: React.FC = () => {
         }
     }, [activeProject, activeProject?.id, loadDocuments]);
 
-    // Auto-parse next document when none is parsing
+    // Auto-poll for document status updates every 5 seconds
     useEffect(() => {
         if (!activeProject) return;
-        
-        const list = documents[activeProject.id] ?? [];
-        const hasParsing = list.some((d) => d.status === "parsing");
-        const hasPending = list.some((d) => d.status === "pending");
-        
-        if (!hasParsing && hasPending) {
-            const next = list.find((d) => d.status === "pending");
-            if (next) {
-                parseNextDocument(activeProject.id);
+
+        const interval = setInterval(() => {
+            // Only poll if there are documents with pending or parsing status
+            const docs = documents[activeProject.id] ?? [];
+            const hasActiveDocuments = docs.some(d => d.status === "pending" || d.status === "parsing");
+            
+            if (hasActiveDocuments) {
+                console.log(`🔄 Auto-polling documents for project ${activeProject.id}`);
+                loadDocuments(activeProject.id);
             }
-        }
-    }, [activeProject, activeProject?.id, parseNextDocument, documents]);
+        }, 5000); // Poll every 5 seconds
+
+        // Cleanup interval on unmount or when activeProject changes
+        return () => {
+            clearInterval(interval);
+        };
+    }, [activeProject, documents, loadDocuments]);
+
+
 
     // Create project
     const onCreate = async (name: string) => {
@@ -119,19 +125,10 @@ const ProjectsRoute: React.FC = () => {
 
             {/* Upload Panel */}
             <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-                <SectionHeader
-                    title="Upload Documents"
-                    subtitle={SPLIT_UPLOAD_TYPES}
-                    actions={
-                        <button
-                            onClick={() => parseNextDocument(activeProject.id)}
-                            disabled={!docs.some(d => d.status === "pending")}
-                            className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-500 disabled:bg-slate-300 disabled:cursor-not-allowed"
-                        >
-                            Start Parsing
-                        </button>
-                    }
-                />
+                                    <SectionHeader
+                        title="Upload Documents"
+                        subtitle={SPLIT_UPLOAD_TYPES}
+                    />
                 <div className="mt-4">
                     <input
                         type="file"
@@ -155,13 +152,19 @@ const ProjectsRoute: React.FC = () => {
                     <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <div className="h-3 w-3 rounded-full bg-blue-500"></div>
-                                <span className="text-sm font-medium text-blue-900">Parsing Queue</span>
+                                <div className="h-3 w-3 rounded-full bg-blue-500 animate-pulse"></div>
+                                <span className="text-sm font-medium text-blue-900">Document Processing Status</span>
                             </div>
                             <div className="text-xs text-blue-700">
-                                {docs.filter(d => d.status === "parsing").length} parsing • {docs.filter(d => d.status === "pending").length} pending • {docs.filter(d => d.status === "completed").length} completed
+                                {docs.filter(d => d.status === "parsing").length} processing • {docs.filter(d => d.status === "pending").length} queued • {docs.filter(d => d.status === "completed").length} completed
                             </div>
                         </div>
+                        {/* Real-time status updates */}
+                        {docs.filter(d => d.status === "parsing" || d.status === "pending").length > 0 && (
+                            <div className="mt-2 text-xs text-blue-600">
+                                🔄 Auto-updating every 5 seconds • Documents process automatically on upload
+                            </div>
+                        )}
                     </div>
                 )}
                 
@@ -172,9 +175,19 @@ const ProjectsRoute: React.FC = () => {
                         </p>
                     ) : (
                         docs.map((doc) => (
-                            <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
+                            <div key={doc.id} className={`flex items-center justify-between p-3 rounded-lg border ${
+                                doc.status === "parsing" ? "border-blue-200 bg-blue-50" : 
+                                doc.status === "pending" ? "border-yellow-200 bg-yellow-50" :
+                                doc.status === "completed" ? "border-green-200 bg-green-50" :
+                                "border-slate-200 bg-slate-50"
+                            }`}>
                                 <div className="flex items-center gap-3">
-                                    <div className="h-8 w-8 rounded-md bg-slate-200 flex items-center justify-center">
+                                    <div className={`h-8 w-8 rounded-md flex items-center justify-center ${
+                                        doc.status === "parsing" ? "bg-blue-200" :
+                                        doc.status === "pending" ? "bg-yellow-200" :
+                                        doc.status === "completed" ? "bg-green-200" :
+                                        "bg-slate-200"
+                                    }`}>
                                         <span className="text-xs text-slate-600">
                                             {doc.filename.split('.').pop()?.toUpperCase()}
                                         </span>
@@ -182,18 +195,27 @@ const ProjectsRoute: React.FC = () => {
                                     <div>
                                         <p className="text-sm font-medium text-slate-900">{doc.filename}</p>
                                         <p className="text-xs text-slate-500">ID: {doc.id}</p>
+                                        {doc.status === "parsing" && (
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></div>
+                                                <span className="text-xs text-blue-600">Processing...</span>
+                                            </div>
+                                        )}
+                                        {doc.status === "pending" && (
+                                            <div className="flex items-center gap-1 mt-1">
+                                                <div className="h-2 w-2 rounded-full bg-yellow-500"></div>
+                                                <span className="text-xs text-yellow-600">Queued for processing</span>
+                                            </div>
+                                        )}
+                                        {doc.status === "completed" && doc.chunk_count && (
+                                            <div className="text-xs text-green-600 mt-1">
+                                                ✅ {doc.chunk_count} chunks created
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <StatusBadge status={doc.status} />
-                                    {doc.status === "pending" && (
-                                        <button
-                                            onClick={() => parseNextDocument(activeProject.id)}
-                                            className="px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
-                                        >
-                                            Parse Now
-                                        </button>
-                                    )}
                                     <button
                                         onClick={() => deleteDocument(activeProject.id, doc.id)}
                                         className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
