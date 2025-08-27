@@ -52,6 +52,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, projects: action.payload };
         case 'ADD_PROJECT':
             return { ...state, projects: [action.payload, ...state.projects] };
+        case 'DELETE_PROJECT':
+            return { 
+                ...state, 
+                projects: state.projects.filter(p => p.id !== action.payload),
+                documents: Object.fromEntries(
+                    Object.entries(state.documents).filter(([key]) => key !== action.payload)
+                ),
+                indexes: Object.fromEntries(
+                    Object.entries(state.indexes).filter(([key]) => key !== action.payload)
+                )
+            };
         case 'SET_DOCUMENTS':
             return {
                 ...state,
@@ -78,6 +89,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
                     )
                 }
             };
+        case 'DELETE_DOCUMENT':
+            return {
+                ...state,
+                documents: {
+                    ...state.documents,
+                    [action.payload.projectId]: (state.documents[action.payload.projectId] || []).filter(doc =>
+                        doc.id !== action.payload.documentId
+                    )
+                }
+            };
         case 'SET_INDEXES':
             return {
                 ...state,
@@ -101,6 +122,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
                     ...state.indexes,
                     [action.payload.projectId]: (state.indexes[action.payload.projectId] || []).map(idx =>
                         idx.id === action.payload.indexId ? { ...idx, ...action.payload.updates } : idx
+                    )
+                }
+            };
+        case 'DELETE_INDEX':
+            return {
+                ...state,
+                indexes: {
+                    ...state.indexes,
+                    [action.payload.projectId]: (state.indexes[action.payload.projectId] || []).filter(idx =>
+                        idx.id !== action.payload.indexId
                     )
                 }
             };
@@ -253,14 +284,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     
                     if (!hasParsing && hasPending) {
                         // Start parsing the next pending document
-                        parseNextDocument(projectId);
+                        // Use a direct call to avoid circular dependency
+                        documentsApi.parseNext(projectId).then((nextDoc) => {
+                            if (nextDoc) {
+                                dispatch({ type: 'UPDATE_DOCUMENT', payload: { projectId, documentId: nextDoc.id, updates: nextDoc } });
+                            }
+                        }).catch((error) => {
+                            setError(error instanceof Error ? error.message : 'Failed to parse next document');
+                        });
                     }
                 }, 1000); // Small delay to ensure state is updated
             }
         } catch (error) {
             setError(error instanceof Error ? error.message : 'Failed to parse document');
         }
-    }, [state.documents, parseNextDocument]);
+    }, [state.documents, setError]);
 
     const deleteDocument = useCallback(async (projectId: string, documentId: string) => {
         try {

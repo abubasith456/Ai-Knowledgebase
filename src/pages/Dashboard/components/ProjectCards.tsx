@@ -6,6 +6,7 @@ interface ProjectCardsProps {
     projects: Project[];
     onCreate: (name: string) => void;
     onOpen: (id: string) => void;
+    onDelete: (id: string) => void;
     isCreating: boolean;
     newProjectName: string;
     setNewProjectName: (name: string) => void;
@@ -15,6 +16,7 @@ const ProjectCards: React.FC<ProjectCardsProps> = ({
     projects,
     onCreate,
     onOpen,
+    onDelete,
     isCreating,
     newProjectName,
     setNewProjectName,
@@ -96,27 +98,43 @@ const ProjectCards: React.FC<ProjectCardsProps> = ({
                         {projects.map((project) => (
                             <div
                                 key={project.id}
-                                className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:bg-slate-100 transition-colors cursor-pointer"
-                                onClick={() => onOpen(project.id)}
+                                className="rounded-lg border border-slate-200 bg-slate-50 p-4 hover:bg-slate-100 transition-colors"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white font-semibold text-sm">
-                                        {project.name.charAt(0).toUpperCase()}
+                                <div 
+                                    className="cursor-pointer"
+                                    onClick={() => onOpen(project.id)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white font-semibold text-sm">
+                                            {project.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="text-sm font-medium text-slate-900 truncate">
+                                                {project.name}
+                                            </h3>
+                                            <p className="text-xs text-slate-500 truncate">
+                                                ID: {project.id}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-sm font-medium text-slate-900 truncate">
-                                            {project.name}
-                                        </h3>
-                                        <p className="text-xs text-slate-500 truncate">
-                                            ID: {project.id}
-                                        </p>
+                                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                                        <span>Secret: {project.secret}</span>
+                                        <span className="text-indigo-600 hover:text-indigo-700">
+                                            Open →
+                                        </span>
                                     </div>
                                 </div>
-                                <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                                    <span>Secret: {project.secret}</span>
-                                    <span className="text-indigo-600 hover:text-indigo-700">
-                                        Open →
-                                    </span>
+                                <div className="mt-3 pt-3 border-t border-slate-200 flex justify-end">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onDelete(project.id);
+                                        }}
+                                        className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                        title="Delete project"
+                                    >
+                                        🗑️ Delete
+                                    </button>
                                 </div>
                             </div>
                         ))}

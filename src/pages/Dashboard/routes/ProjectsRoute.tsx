@@ -14,9 +14,11 @@ const ProjectsRoute: React.FC = () => {
         loading,
         createProject,
         setActiveProject,
+        deleteProject,
         uploadDocument,
         loadDocuments,
         parseNextDocument,
+        deleteDocument,
     } = useApp();
 
     const [newProjectName, setNewProjectName] = useState<string>("");
@@ -91,6 +93,7 @@ const ProjectsRoute: React.FC = () => {
                 projects={projects} 
                 onCreate={onCreate} 
                 onOpen={onOpen}
+                onDelete={deleteProject}
                 isCreating={isCreatingProject}
                 newProjectName={newProjectName}
                 setNewProjectName={setNewProjectName}
@@ -191,6 +194,13 @@ const ProjectsRoute: React.FC = () => {
                                             Parse Now
                                         </button>
                                     )}
+                                    <button
+                                        onClick={() => deleteDocument(activeProject.id, doc.id)}
+                                        className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                        title="Delete document"
+                                    >
+                                        🗑️
+                                    </button>
                                 </div>
                             </div>
                         ))
