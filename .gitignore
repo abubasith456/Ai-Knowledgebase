@@ -303,3 +303,4 @@ backend/chroma/
 backend/markdown/
 *.sqlite3
 *.db
+backend/app/storage/
