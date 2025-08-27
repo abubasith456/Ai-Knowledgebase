@@ -84,14 +84,6 @@ export const documentsApi = {
         return response.data;
     },
 
-    // Parse next document
-    parseNext: async (projectId: string): Promise<Document | null> => {
-        const response = await apiClient.post<Document | null>(
-            `/projects/${projectId}/parse-next`
-        );
-        return response.data;
-    },
-
     // Delete document
     delete: async (projectId: string, documentId: string): Promise<void> => {
         await apiClient.delete(`/projects/${projectId}/documents/${documentId}`);
