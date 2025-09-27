@@ -1,0 +1,12 @@
+fastapi[standard]
+uvicorn[standard]
+python-multipart
+pydantic
+python-dotenv
+pydantic_settings
+torch
+sentence-transformers
+docling
+minio
+pymongo
+qdrant_client
