@@ -10,3 +10,6 @@ docling
 minio
 pymongo
 qdrant_client
+markdownify
+scrapy
+scrapy-playwright 

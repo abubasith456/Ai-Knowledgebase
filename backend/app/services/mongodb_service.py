@@ -10,11 +10,11 @@ from app.models.schemas import (
     ProjectStatus,
     JobStatus,
     IndexStatus,
+    DocumentType,
 )
 from app.utils.logging import log_print
 from app.services.minio_service import minio_service
 from app.services.qdrant_service import qdrant_service
-
 
 class MongoDBService:
     def __init__(self):
@@ -24,7 +24,6 @@ class MongoDBService:
 
     # Project operations
     def create_project(self, name: str, description: Optional[str] = None) -> str:
-        # Create Pydantic model
         project = ProjectDB(
             name=name,
             description=description,
@@ -33,7 +32,6 @@ class MongoDBService:
             updated_at=datetime.now(),
         )
 
-        # Convert to dict for MongoDB insertion
         project_dict = project.model_dump()
         self.db.projects.insert_one(project_dict)
         log_print(f"📁 Created project: {project.id} - {name}")
@@ -52,17 +50,17 @@ class MongoDBService:
         return [ProjectDB(**doc) for doc in docs]
 
     def delete_project(self, project_id: str) -> bool:
-        """DELETE PROJECT WITH CASCADE CLEANUP"""
+        """HARD DELETE PROJECT WITH CASCADE CLEANUP"""
         try:
-            log_print(f"🗑️ Starting cascade deletion for project: {project_id}")
+            log_print(f"🗑️ Starting CASCADE HARD DELETION for project: {project_id}")
 
             # Get all jobs for this project
             jobs = self.get_jobs_by_project(project_id)
-            log_print(f"📄 Found {len(jobs)} jobs to cleanup")
+            log_print(f"📄 Found {len(jobs)} jobs to DELETE")
 
             # Get all indexes for this project
             indexes = self.list_indexes_by_project(project_id)
-            log_print(f"📊 Found {len(indexes)} indexes to cleanup")
+            log_print(f"📊 Found {len(indexes)} indexes to DELETE")
 
             # 1. Delete all Qdrant collections for indexes
             for index in indexes:
@@ -70,9 +68,7 @@ class MongoDBService:
                     qdrant_service.delete_collection(index.id)
                     log_print(f"🗑️ Deleted Qdrant collection: {index.id}")
                 except Exception as e:
-                    log_print(
-                        f"⚠️ Failed to delete Qdrant collection {index.id}: {str(e)}"
-                    )
+                    log_print(f"⚠️ Failed to delete Qdrant collection {index.id}: {str(e)}")
 
             # 2. Delete all MinIO files for jobs
             for job in jobs:
@@ -82,40 +78,26 @@ class MongoDBService:
                 except Exception as e:
                     log_print(f"⚠️ Failed to delete MinIO file {job.id}: {str(e)}")
 
-            # 3. Soft delete all indexes
-            self.db.indexes.update_many(
-                {"project_id": project_id},
-                {"$set": {"status": IndexStatus.DELETED, "updated_at": datetime.now()}},
-            )
+            # 3. HARD DELETE all indexes from MongoDB
+            indexes_deleted = self.db.indexes.delete_many({"project_id": project_id})
+            log_print(f"🗑️ DELETED {indexes_deleted.deleted_count} indexes from MongoDB")
 
-            # 4. Soft delete all jobs
-            self.db.jobs.update_many(
-                {"project_id": project_id},
-                {"$set": {"status": JobStatus.FAILED, "updated_at": datetime.now()}},
-            )
+            # 4. HARD DELETE all jobs from MongoDB
+            jobs_deleted = self.db.jobs.delete_many({"project_id": project_id})
+            log_print(f"🗑️ DELETED {jobs_deleted.deleted_count} jobs from MongoDB")
 
-            # 5. Soft delete project
-            result = self.db.projects.update_one(
-                {"id": project_id},
-                {
-                    "$set": {
-                        "status": ProjectStatus.DELETED,
-                        "updated_at": datetime.now(),
-                    }
-                },
-            )
+            # 5. HARD DELETE project from MongoDB
+            result = self.db.projects.delete_one({"id": project_id})
 
-            if result.modified_count > 0:
-                log_print(
-                    f"✅ Successfully deleted project {project_id} with all related data"
-                )
+            if result.deleted_count > 0:
+                log_print(f"✅ Successfully HARD DELETED project {project_id} with all related data")
                 return True
             else:
-                log_print(f"❌ Project {project_id} not found or already deleted")
+                log_print(f"❌ Project {project_id} not found")
                 return False
 
         except Exception as e:
-            log_print(f"❌ Error during project cascade deletion: {str(e)}")
+            log_print(f"❌ Error during project CASCADE HARD DELETION: {str(e)}")
             return False
 
     def get_project_stats(self, project_id: str) -> dict:
@@ -126,17 +108,18 @@ class MongoDBService:
         return {"jobs_count": jobs_count, "indexes_count": indexes_count}
 
     # Job operations
-    def create_job(self, project_id: str, filename: str) -> str:
-        # Create Pydantic model
+    def create_job(
+        self, project_id: str, filename: str, type: DocumentType = DocumentType.FILE
+    ) -> str:
         job = JobDB(
             project_id=project_id,
             filename=filename,
             status=JobStatus.PARSING,
+            type=type,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
 
-        # Convert to dict for MongoDB insertion
         job_dict = job.model_dump()
         self.db.jobs.insert_one(job_dict)
         return job.id
@@ -161,9 +144,9 @@ class MongoDBService:
         return [JobDB(**doc) for doc in docs]
 
     def delete_job(self, job_id: str) -> Dict[str, str]:
-        """DELETE JOB WITH INDEX DEPENDENCY CHECK"""
+        """HARD DELETE JOB WITH INDEX DEPENDENCY CHECK"""
         try:
-            log_print(f"🗑️ Checking if job {job_id} can be deleted")
+            log_print(f"🗑️ Checking if job {job_id} can be HARD DELETED")
 
             # Check if job is used in any active indexes
             indexes_using_job = list(
@@ -187,20 +170,17 @@ class MongoDBService:
             except Exception as e:
                 log_print(f"⚠️ Failed to delete MinIO file {job_id}: {str(e)}")
 
-            # Soft delete job
-            result = self.db.jobs.update_one(
-                {"id": job_id},
-                {"$set": {"status": JobStatus.FAILED, "updated_at": datetime.now()}},
-            )
+            # HARD DELETE job from MongoDB
+            result = self.db.jobs.delete_one({"id": job_id})
 
-            if result.modified_count > 0:
-                log_print(f"✅ Successfully deleted job: {job_id}")
+            if result.deleted_count > 0:
+                log_print(f"✅ Successfully HARD DELETED job: {job_id}")
                 return {"status": "success", "message": "Job deleted successfully"}
             else:
                 return {"status": "failed", "message": "Job not found"}
 
         except Exception as e:
-            log_print(f"❌ Error deleting job {job_id}: {str(e)}")
+            log_print(f"❌ Error HARD DELETING job {job_id}: {str(e)}")
             return {"status": "failed", "message": str(e)}
 
     # Index operations
@@ -211,8 +191,6 @@ class MongoDBService:
         job_ids: List[str],
         description: Optional[str] = None,
     ) -> str:
-
-        # Create Pydantic model
         index = IndexDB(
             project_id=project_id,
             name=name,
@@ -224,7 +202,6 @@ class MongoDBService:
             updated_at=datetime.now(),
         )
 
-        # Convert to dict for MongoDB insertion
         index_dict = index.model_dump()
         self.db.indexes.insert_one(index_dict)
         return index.id
@@ -251,33 +228,29 @@ class MongoDBService:
         return [IndexDB(**doc) for doc in docs]
 
     def delete_index(self, index_id: str) -> bool:
-        """DELETE INDEX WITH QDRANT CLEANUP"""
+        """HARD DELETE INDEX WITH QDRANT CLEANUP"""
         try:
-            log_print(f"🗑️ Deleting index: {index_id}")
-            
+            log_print(f"🗑️ HARD DELETING index: {index_id}")
+
             # Delete Qdrant collection
             try:
                 qdrant_service.delete_collection(index_id)
                 log_print(f"🗑️ Deleted Qdrant collection: {index_id}")
             except Exception as e:
                 log_print(f"⚠️ Failed to delete Qdrant collection {index_id}: {str(e)}")
-            
-            # Soft delete index
-            result = self.db.indexes.update_one(
-                {"id": index_id},
-                {"$set": {"status": IndexStatus.DELETED, "updated_at": datetime.now()}}
-            )
-            
-            if result.modified_count > 0:
-                log_print(f"✅ Successfully deleted index: {index_id}")
+
+            # HARD DELETE index from MongoDB
+            result = self.db.indexes.delete_one({"id": index_id})
+
+            if result.deleted_count > 0:
+                log_print(f"✅ Successfully HARD DELETED index: {index_id}")
                 return True
             else:
                 log_print(f"❌ Index {index_id} not found")
                 return False
-                
-        except Exception as e:
-            log_print(f"❌ Error deleting index {index_id}: {str(e)}")
-            return False
 
+        except Exception as e:
+            log_print(f"❌ Error HARD DELETING index {index_id}: {str(e)}")
+            return False
 
 mongodb_service = MongoDBService()
