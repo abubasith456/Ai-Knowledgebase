@@ -6,10 +6,9 @@ echo "🚀 Starting Knowledge Base Server Setup..."
 echo "📦 Installing Python requirements..."
 pip install -r requirements.txt
 
-# Install Playwright browsers
-echo "🎭 Installing Playwright browsers..."
-playwright install
+# Install Playwright system dependencies
+echo "🎭 Installing Playwright system dependencies..."
+playwright install-deps
 
-# Start the server
-echo "🌟 Starting FastAPI server..."
-python main.py
+echo "✅ Setup complete!"
+# Remove this line: python main.py
