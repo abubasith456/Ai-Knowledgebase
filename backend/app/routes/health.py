@@ -18,7 +18,7 @@ async def test_nvidia_api(text: str = "Hello world"):
     """Test NVIDIA API directly"""
     try:
         log_print(f"🧪 Testing NVIDIA API with text: '{text}'")
-        embeddings = nvidia_service.get_embeddings(
+        embeddings = await nvidia_service.get_embeddings(
             [text], "nvidia/llama-3.2-nv-embedqa-1b-v2"
         )
 

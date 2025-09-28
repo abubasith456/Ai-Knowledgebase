@@ -5,7 +5,6 @@ pydantic
 python-dotenv
 pydantic_settings
 torch
-sentence-transformers
 docling
 minio
 pymongo
@@ -13,3 +12,5 @@ qdrant_client
 markdownify
 scrapy
 scrapy-playwright 
+aiohttp
+aiofiles

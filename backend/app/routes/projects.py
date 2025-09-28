@@ -13,10 +13,12 @@ router = APIRouter()
 async def create_project(request: ProjectCreate):
     """Create a new project"""
     try:
-        project_id = mongodb_service.create_project(request.name, request.description)
+        project_id = await mongodb_service.create_project(
+            request.name, request.description
+        )
         print("Created project ID:", project_id)
-        project = mongodb_service.get_project(project_id)
-        stats = mongodb_service.get_project_stats(project_id)
+        project = await mongodb_service.get_project(project_id)
+        stats = await mongodb_service.get_project_stats(project_id)
 
         if not project:
             return StandardResponse.failed(
@@ -44,11 +46,11 @@ async def create_project(request: ProjectCreate):
 async def list_projects():
     """List all projects"""
     try:
-        projects = mongodb_service.list_projects()
+        projects = await mongodb_service.list_projects()
         result = []
 
         for project in projects:
-            stats = mongodb_service.get_project_stats(project.id)
+            stats = await mongodb_service.get_project_stats(project.id)
             result.append(
                 ProjectResponse(
                     project_id=project.id,
@@ -72,11 +74,11 @@ async def list_projects():
 async def get_project(project_id: str):
     """Get project details"""
     try:
-        project = mongodb_service.get_project(project_id)
+        project = await mongodb_service.get_project(project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
 
-        stats = mongodb_service.get_project_stats(project_id)
+        stats = await mongodb_service.get_project_stats(project_id)
 
         response_data = ProjectResponse(
             project_id=project.id,
@@ -99,11 +101,11 @@ async def get_project(project_id: str):
 async def delete_project(project_id: str):
     """Delete a project with cascade cleanup (jobs, indexes, vector DB, MinIO files)"""
     try:
-        project = mongodb_service.get_project(project_id)
+        project = await mongodb_service.get_project(project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
 
-        success = mongodb_service.delete_project(project_id)
+        success = await mongodb_service.delete_project(project_id)
 
         if success:
             return StandardResponse.success(
@@ -123,11 +125,11 @@ async def delete_project(project_id: str):
 async def get_project_jobs(project_id: str):
     """Get all jobs for a project"""
     try:
-        project = mongodb_service.get_project(project_id)
+        project = await mongodb_service.get_project(project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
 
-        jobs = mongodb_service.get_jobs_by_project(project_id)
+        jobs = await mongodb_service.get_jobs_by_project(project_id)
         jobs_data = [job.model_dump() for job in jobs]
 
         return StandardResponse.success(
@@ -143,11 +145,11 @@ async def get_project_jobs(project_id: str):
 async def get_project_indexes(project_id: str):
     """Get all indexes for a project"""
     try:
-        project = mongodb_service.get_project(project_id)
+        project = await mongodb_service.get_project(project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
 
-        indexes = mongodb_service.list_indexes_by_project(project_id)
+        indexes = await mongodb_service.list_indexes_by_project(project_id)
         indexes_data = [index.model_dump() for index in indexes]
 
         return StandardResponse.success(

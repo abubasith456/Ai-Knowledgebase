@@ -1,5 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks
 import os
+import asyncio
+import aiofiles
 
 from app.models.schemas import (
     JobResponse,
@@ -11,7 +13,7 @@ from app.models.schemas import (
     ContentStatsResponse,
     JobContentPreviewResponse,
     JobContentPreviewStats,
-    ManualContentRequest
+    ManualContentRequest,
 )
 from app.models.response import StandardResponse
 from app.services.mongodb_service import mongodb_service
@@ -29,23 +31,21 @@ async def upload_document(
 ):
     """Upload and process PDF document to a project"""
     try:
-        # Verify project exists
-        project = mongodb_service.get_project(project_id)
+        project = await mongodb_service.get_project(project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
 
         if not file.filename or not file.filename.endswith(".pdf"):
             return StandardResponse.failed(error="Only PDF files supported")
 
-        # Create job
-        job_id = mongodb_service.create_job(project_id, file.filename)
+        job_id = await mongodb_service.create_job(project_id, file.filename)
 
         # Save file temporarily
         temp_file_path = f"/tmp/{job_id}_{file.filename}"
 
-        with open(temp_file_path, "wb") as temp_file:
+        async with aiofiles.open(temp_file_path, "wb") as temp_file:
             content = await file.read()
-            temp_file.write(content)
+            await temp_file.write(content)
 
         log_print(f"📄 File saved: {temp_file_path} ({len(content)} bytes)")
 
@@ -74,7 +74,7 @@ async def view_job_content(job_id: str):
     """View the processed markdown content from MinIO storage"""
     try:
         # Check if job exists
-        job = mongodb_service.get_job(job_id)
+        job = await mongodb_service.get_job(job_id)
         if not job:
             return StandardResponse.failed(error="Job not found")
 
@@ -85,7 +85,7 @@ async def view_job_content(job_id: str):
             )
 
         # Download content from MinIO
-        markdown_content = minio_service.download_markdown(job_id)
+        markdown_content = await minio_service.download_markdown(job_id)
 
         # Create response using Pydantic models
         response_data = JobContentResponse(
@@ -121,7 +121,7 @@ async def view_job_content(job_id: str):
 async def preview_job_content(job_id: str, lines: int = 50):
     """Preview the first N lines of processed markdown content"""
     try:
-        job = mongodb_service.get_job(job_id)
+        job = await mongodb_service.get_job(job_id)
         if not job:
             return StandardResponse.failed(error="Job not found")
 
@@ -131,7 +131,7 @@ async def preview_job_content(job_id: str, lines: int = 50):
             )
 
         # Download content from MinIO
-        markdown_content = minio_service.download_markdown(job_id)
+        markdown_content = await minio_service.download_markdown(job_id)
 
         # Get preview (first N lines)
         content_lines = markdown_content.split("\n")
@@ -172,15 +172,17 @@ async def preview_job_content(job_id: str, lines: int = 50):
 
 @router.post("/scrap-url", response_model=StandardResponse[JobResponse])
 async def scrap_url(req: ScrapRequest, background_tasks: BackgroundTasks):
-    # 1. Confirm project exists
-    project = mongodb_service.get_project(req.project_id)
+
+    project = await mongodb_service.get_project(req.project_id)
     if not project:
         return StandardResponse.failed(error="Project not found")
     # 2. Validate/clean URL
     if not req.url.startswith("http"):
         return StandardResponse.failed(error="Invalid URL")
-    # 3. Create job with type='web'
-    job_id = mongodb_service.create_job(req.project_id, req.url, type=DocumentType.WEB)
+
+    job_id = await mongodb_service.create_job(
+        req.project_id, req.url, type=DocumentType.WEB
+    )
     # 4. Add background task to process_url_scraping
     background_tasks.add_task(
         scraping_service.process_scrap_to_markdown, req.url, job_id
@@ -195,62 +197,71 @@ async def scrap_url(req: ScrapRequest, background_tasks: BackgroundTasks):
         )
     )
 
+
 @router.post("/content", response_model=StandardResponse[JobResponse])
 async def add_manual_content(request: ManualContentRequest):
     """Add content manually - perfect for when scraping fails or for direct content input"""
     try:
-        log_print(f"📝 [MANUAL] Adding manual content for project: {request.project_id}")
-        
+        log_print(
+            f"📝 [MANUAL] Adding manual content for project: {request.project_id}"
+        )
+
         # Verify project exists
-        project = mongodb_service.get_project(request.project_id)
+        project = await mongodb_service.get_project(request.project_id)
         if not project:
             return StandardResponse.failed(error="Project not found")
-        
+
         # Validate content
         if not request.content.strip():
             return StandardResponse.failed(error="Content cannot be empty")
-        
+
         if len(request.content) < 10:
-            return StandardResponse.failed(error="Content too short (minimum 10 characters)")
-        
+            return StandardResponse.failed(
+                error="Content too short (minimum 10 characters)"
+            )
+
         # Create filename from title
-        safe_title = "".join(c for c in request.title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_title = "".join(
+            c for c in request.title if c.isalnum() or c in (" ", "-", "_")
+        ).strip()
         filename = f"{safe_title}.md" if safe_title else "manual_content.md"
-        
-        # Create job with type='manual' 
-        job_id = mongodb_service.create_job(
-            request.project_id, 
-            filename, 
-            type=DocumentType.WEB  # Using WEB type for manual content
+
+        # Create job with type='manual'
+        job_id = await mongodb_service.create_job(
+            request.project_id,
+            filename,
+            type=DocumentType.WEB,  # Using WEB type for manual content
         )
-        
+
         # Format content with metadata
         formatted_content = f"""# {request.title}"""
-        
+
         # Add source URL if provided
         if request.source_url:
             formatted_content += f"  \n**Source:** {request.source_url}"
-        
+
         # Add description if provided
         if request.description:
             formatted_content += f"  \n**Description:** {request.description}"
-        
+
         formatted_content += f"\n\n---\n\n{request.content}"
-        
+
         # Save directly to MinIO (no background processing needed)
-        minio_service.upload_markdown(job_id, formatted_content)
-        
+        await minio_service.upload_markdown(job_id, formatted_content)
+
         # Update job status to completed immediately
-        mongodb_service.update_job_status(
+        await mongodb_service.update_job_status(
             job_id,
             JobStatus.COMPLETED,
-            file_size=len(request.content.encode('utf-8')),
+            file_size=len(request.content.encode("utf-8")),
             markdown_size=len(formatted_content),
-            manual_content_added=True
+            manual_content_added=True,
         )
-        
-        log_print(f"✅ [MANUAL] Manual content added successfully: {job_id} ({len(formatted_content)} chars)")
-        
+
+        log_print(
+            f"✅ [MANUAL] Manual content added successfully: {job_id} ({len(formatted_content)} chars)"
+        )
+
         response_data = JobResponse(
             job_id=job_id,
             project_id=request.project_id,
@@ -258,17 +269,18 @@ async def add_manual_content(request: ManualContentRequest):
             status=JobStatus.COMPLETED,
             message="Manual content added successfully",
         )
-        
+
         return StandardResponse.success(data=response_data)
-        
+
     except Exception as e:
         log_print(f"❌ [MANUAL] Failed to add manual content: {str(e)}")
         return StandardResponse.failed(error=f"Failed to add manual content: {str(e)}")
 
-def process_document_background(file_path: str, job_id: str):
-    """Background task to process document"""
+
+async def process_document_background(file_path: str, job_id: str):
+    """Background task to process document - ASYNC VERSION"""
     try:
-        log_print(f"🔄 [DOC] Starting processing for job: {job_id}")
+        log_print(f"🔄 [DOC] Starting ASYNC processing for job: {job_id}")
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -276,32 +288,31 @@ def process_document_background(file_path: str, job_id: str):
         file_size = os.path.getsize(file_path)
         log_print(f"📊 [DOC] File size: {file_size / 1024 / 1024:.2f} MB")
 
-        # Convert with Docling
-        markdown_content = docling_service.convert_to_markdown(file_path)
+        markdown_content = await docling_service.convert_to_markdown(file_path)
 
         if not markdown_content.strip():
             raise ValueError("No content extracted from document")
 
-        # Save to MinIO
-        minio_service.upload_markdown(job_id, markdown_content)
+        await minio_service.upload_markdown(job_id, markdown_content)
 
-        # Update job status
-        mongodb_service.update_job_status(
+        await mongodb_service.update_job_status(
             job_id,
             JobStatus.COMPLETED,
             file_size=file_size,
             markdown_size=len(markdown_content),
         )
 
-        log_print(f"✅ [DOC] Processing completed for job: {job_id}")
+        log_print(f"✅ [DOC] ASYNC processing completed for job: {job_id}")
 
     except Exception as e:
-        log_print(f"❌ [DOC] Processing failed for job {job_id}: {str(e)}")
-        mongodb_service.update_job_status(job_id, JobStatus.FAILED, error=str(e))
+        log_print(f"❌ [DOC] ASYNC processing failed for job {job_id}: {str(e)}")
+
+        await mongodb_service.update_job_status(job_id, JobStatus.FAILED, error=str(e))
     finally:
         # Cleanup
         if os.path.exists(file_path):
-            os.remove(file_path)
+            # FIXED: Use async file removal
+            await asyncio.get_event_loop().run_in_executor(None, os.remove, file_path)
             log_print(f"🗑️ [DOC] Cleaned up temp file: {file_path}")
 
 
@@ -309,7 +320,7 @@ def process_document_background(file_path: str, job_id: str):
 async def get_job_status(job_id: str):
     """Get job processing status"""
     try:
-        job = mongodb_service.get_job(job_id)
+        job = await mongodb_service.get_job(job_id)
         if not job:
             return StandardResponse.failed(error="Job not found")
 
@@ -324,11 +335,11 @@ async def get_job_status(job_id: str):
 async def delete_job(job_id: str):
     """Delete a job (checks if used in indexes)"""
     try:
-        job = mongodb_service.get_job(job_id)
+        job = await mongodb_service.get_job(job_id)
         if not job:
             return StandardResponse.failed(error="Job not found")
 
-        result = mongodb_service.delete_job(job_id)
+        result = await mongodb_service.delete_job(job_id)
 
         if result["status"] == "success":
             return StandardResponse.success(data={"message": result["message"]})

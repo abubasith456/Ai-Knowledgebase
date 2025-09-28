@@ -1,6 +1,7 @@
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 from typing import List, Optional, Dict
+import asyncio
 
 from app.config import settings
 from app.models.schemas import (
@@ -18,12 +19,16 @@ from app.services.qdrant_service import qdrant_service
 
 class MongoDBService:
     def __init__(self):
-        self.client = MongoClient(settings.MONGODB_URI)
+        self.client = AsyncIOMotorClient(settings.MONGODB_URI)
         self.db = self.client.knowledge_base
-        log_print("✅ MongoDB service initialized")
+        log_print("✅ Async MongoDB service initialized")
+
+    async def close(self):
+        """Close the database connection"""
+        self.client.close()
 
     # Project operations
-    def create_project(self, name: str, description: Optional[str] = None) -> str:
+    async def create_project(self, name: str, description: Optional[str] = None) -> str:
         project = ProjectDB(
             name=name,
             description=description,
@@ -33,82 +38,99 @@ class MongoDBService:
         )
 
         project_dict = project.model_dump()
-        self.db.projects.insert_one(project_dict)
-        log_print(f"📁 Created project: {project.id} - {name}")
+        await self.db.projects.insert_one(project_dict)
+        log_print(f"📁 Async created project: {project.id} - {name}")
         return project.id
 
-    def get_project(self, project_id: str) -> Optional[ProjectDB]:
-        doc = self.db.projects.find_one(
+    async def get_project(self, project_id: str) -> Optional[ProjectDB]:
+        doc = await self.db.projects.find_one(
             {"id": project_id, "status": ProjectStatus.ACTIVE}
         )
         if doc:
             return ProjectDB(**doc)
         return None
 
-    def list_projects(self) -> List[ProjectDB]:
-        docs = list(self.db.projects.find({"status": ProjectStatus.ACTIVE}))
+    async def list_projects(self) -> List[ProjectDB]:
+        cursor = self.db.projects.find({"status": ProjectStatus.ACTIVE})
+        docs = await cursor.to_list(length=None)
         return [ProjectDB(**doc) for doc in docs]
 
-    def delete_project(self, project_id: str) -> bool:
-        """HARD DELETE PROJECT WITH CASCADE CLEANUP"""
+    async def delete_project(self, project_id: str) -> bool:
+        """ASYNC HARD DELETE PROJECT WITH CASCADE CLEANUP"""
         try:
-            log_print(f"🗑️ Starting CASCADE HARD DELETION for project: {project_id}")
+            log_print(f"🗑️ Starting ASYNC CASCADE HARD DELETION for project: {project_id}")
 
             # Get all jobs for this project
-            jobs = self.get_jobs_by_project(project_id)
+            jobs = await self.get_jobs_by_project(project_id)
             log_print(f"📄 Found {len(jobs)} jobs to DELETE")
 
             # Get all indexes for this project
-            indexes = self.list_indexes_by_project(project_id)
+            indexes = await self.list_indexes_by_project(project_id)
             log_print(f"📊 Found {len(indexes)} indexes to DELETE")
 
-            # 1. Delete all Qdrant collections for indexes
+            # 1. Delete all Qdrant collections for indexes (concurrent)
+            qdrant_tasks = []
             for index in indexes:
-                try:
-                    qdrant_service.delete_collection(index.id)
-                    log_print(f"🗑️ Deleted Qdrant collection: {index.id}")
-                except Exception as e:
-                    log_print(f"⚠️ Failed to delete Qdrant collection {index.id}: {str(e)}")
+                async def delete_qdrant_collection(idx):
+                    try:
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, qdrant_service.delete_collection, idx.id
+                        )
+                        log_print(f"🗑️ Deleted Qdrant collection: {idx.id}")
+                    except Exception as e:
+                        log_print(f"⚠️ Failed to delete Qdrant collection {idx.id}: {str(e)}")
+                
+                qdrant_tasks.append(delete_qdrant_collection(index))
+            
+            if qdrant_tasks:
+                await asyncio.gather(*qdrant_tasks, return_exceptions=True)
 
-            # 2. Delete all MinIO files for jobs
+            # 2. Delete all MinIO files for jobs (concurrent)
+            minio_tasks = []
             for job in jobs:
-                try:
-                    minio_service.delete_markdown(job.id)
-                    log_print(f"🗑️ Deleted MinIO file: {job.id}")
-                except Exception as e:
-                    log_print(f"⚠️ Failed to delete MinIO file {job.id}: {str(e)}")
+                async def delete_minio_file(j):
+                    try:
+                        await minio_service.delete_markdown(j.id)
+                        log_print(f"🗑️ Deleted MinIO file: {j.id}")
+                    except Exception as e:
+                        log_print(f"⚠️ Failed to delete MinIO file {j.id}: {str(e)}")
+                
+                minio_tasks.append(delete_minio_file(job))
+            
+            if minio_tasks:
+                await asyncio.gather(*minio_tasks, return_exceptions=True)
 
             # 3. HARD DELETE all indexes from MongoDB
-            indexes_deleted = self.db.indexes.delete_many({"project_id": project_id})
+            indexes_deleted = await self.db.indexes.delete_many({"project_id": project_id})
             log_print(f"🗑️ DELETED {indexes_deleted.deleted_count} indexes from MongoDB")
 
             # 4. HARD DELETE all jobs from MongoDB
-            jobs_deleted = self.db.jobs.delete_many({"project_id": project_id})
+            jobs_deleted = await self.db.jobs.delete_many({"project_id": project_id})
             log_print(f"🗑️ DELETED {jobs_deleted.deleted_count} jobs from MongoDB")
 
             # 5. HARD DELETE project from MongoDB
-            result = self.db.projects.delete_one({"id": project_id})
+            result = await self.db.projects.delete_one({"id": project_id})
 
             if result.deleted_count > 0:
-                log_print(f"✅ Successfully HARD DELETED project {project_id} with all related data")
+                log_print(f"✅ Successfully ASYNC HARD DELETED project {project_id} with all related data")
                 return True
             else:
                 log_print(f"❌ Project {project_id} not found")
                 return False
 
         except Exception as e:
-            log_print(f"❌ Error during project CASCADE HARD DELETION: {str(e)}")
+            log_print(f"❌ Error during ASYNC project CASCADE HARD DELETION: {str(e)}")
             return False
 
-    def get_project_stats(self, project_id: str) -> dict:
-        jobs_count = self.db.jobs.count_documents({"project_id": project_id})
-        indexes_count = self.db.indexes.count_documents(
+    async def get_project_stats(self, project_id: str) -> dict:
+        jobs_count = await self.db.jobs.count_documents({"project_id": project_id})
+        indexes_count = await self.db.indexes.count_documents(
             {"project_id": project_id, "status": {"$ne": IndexStatus.DELETED}}
         )
         return {"jobs_count": jobs_count, "indexes_count": indexes_count}
 
     # Job operations
-    def create_job(
+    async def create_job(
         self, project_id: str, filename: str, type: DocumentType = DocumentType.FILE
     ) -> str:
         job = JobDB(
@@ -121,39 +143,40 @@ class MongoDBService:
         )
 
         job_dict = job.model_dump()
-        self.db.jobs.insert_one(job_dict)
+        await self.db.jobs.insert_one(job_dict)
         return job.id
 
-    def update_job_status(self, job_id: str, status: JobStatus, **kwargs):
+    async def update_job_status(self, job_id: str, status: JobStatus, **kwargs):
         update_data = {"status": status, "updated_at": datetime.now()}
         update_data.update(kwargs)
-        self.db.jobs.update_one({"id": job_id}, {"$set": update_data})
+        await self.db.jobs.update_one({"id": job_id}, {"$set": update_data})
 
-    def get_job(self, job_id: str) -> Optional[JobDB]:
-        doc = self.db.jobs.find_one({"id": job_id})
+    async def get_job(self, job_id: str) -> Optional[JobDB]:
+        doc = await self.db.jobs.find_one({"id": job_id})
         if doc:
             return JobDB(**doc)
         return None
 
-    def get_jobs_by_project(self, project_id: str) -> List[JobDB]:
-        docs = list(self.db.jobs.find({"project_id": project_id}))
+    async def get_jobs_by_project(self, project_id: str) -> List[JobDB]:
+        cursor = self.db.jobs.find({"project_id": project_id})
+        docs = await cursor.to_list(length=None)
         return [JobDB(**doc) for doc in docs]
 
-    def get_jobs_by_ids(self, job_ids: List[str]) -> List[JobDB]:
-        docs = list(self.db.jobs.find({"id": {"$in": job_ids}}))
+    async def get_jobs_by_ids(self, job_ids: List[str]) -> List[JobDB]:
+        cursor = self.db.jobs.find({"id": {"$in": job_ids}})
+        docs = await cursor.to_list(length=None)
         return [JobDB(**doc) for doc in docs]
 
-    def delete_job(self, job_id: str) -> Dict[str, str]:
-        """HARD DELETE JOB WITH INDEX DEPENDENCY CHECK"""
+    async def delete_job(self, job_id: str) -> Dict[str, str]:
+        """ASYNC HARD DELETE JOB WITH INDEX DEPENDENCY CHECK"""
         try:
-            log_print(f"🗑️ Checking if job {job_id} can be HARD DELETED")
+            log_print(f"🗑️ Checking if job {job_id} can be ASYNC HARD DELETED")
 
             # Check if job is used in any active indexes
-            indexes_using_job = list(
-                self.db.indexes.find(
-                    {"job_ids": job_id, "status": {"$ne": IndexStatus.DELETED}}
-                )
+            cursor = self.db.indexes.find(
+                {"job_ids": job_id, "status": {"$ne": IndexStatus.DELETED}}
             )
+            indexes_using_job = await cursor.to_list(length=None)
 
             if indexes_using_job:
                 index_names = [idx["name"] for idx in indexes_using_job]
@@ -165,26 +188,26 @@ class MongoDBService:
 
             # Delete from MinIO
             try:
-                minio_service.delete_markdown(job_id)
+                await minio_service.delete_markdown(job_id)
                 log_print(f"🗑️ Deleted MinIO file: {job_id}")
             except Exception as e:
                 log_print(f"⚠️ Failed to delete MinIO file {job_id}: {str(e)}")
 
             # HARD DELETE job from MongoDB
-            result = self.db.jobs.delete_one({"id": job_id})
+            result = await self.db.jobs.delete_one({"id": job_id})
 
             if result.deleted_count > 0:
-                log_print(f"✅ Successfully HARD DELETED job: {job_id}")
+                log_print(f"✅ Successfully ASYNC HARD DELETED job: {job_id}")
                 return {"status": "success", "message": "Job deleted successfully"}
             else:
                 return {"status": "failed", "message": "Job not found"}
 
         except Exception as e:
-            log_print(f"❌ Error HARD DELETING job {job_id}: {str(e)}")
+            log_print(f"❌ Error ASYNC HARD DELETING job {job_id}: {str(e)}")
             return {"status": "failed", "message": str(e)}
 
     # Index operations
-    def create_index(
+    async def create_index(
         self,
         project_id: str,
         name: str,
@@ -203,54 +226,55 @@ class MongoDBService:
         )
 
         index_dict = index.model_dump()
-        self.db.indexes.insert_one(index_dict)
+        await self.db.indexes.insert_one(index_dict)
         return index.id
 
-    def update_index_status(self, index_id: str, status: IndexStatus, **kwargs):
+    async def update_index_status(self, index_id: str, status: IndexStatus, **kwargs):
         update_data = {"status": status, "updated_at": datetime.now()}
         update_data.update(kwargs)
-        self.db.indexes.update_one({"id": index_id}, {"$set": update_data})
+        await self.db.indexes.update_one({"id": index_id}, {"$set": update_data})
 
-    def get_index(self, index_id: str) -> Optional[IndexDB]:
-        doc = self.db.indexes.find_one(
+    async def get_index(self, index_id: str) -> Optional[IndexDB]:
+        doc = await self.db.indexes.find_one(
             {"id": index_id, "status": {"$ne": IndexStatus.DELETED}}
         )
         if doc:
             return IndexDB(**doc)
         return None
 
-    def list_indexes_by_project(self, project_id: str) -> List[IndexDB]:
-        docs = list(
-            self.db.indexes.find(
-                {"project_id": project_id, "status": {"$ne": IndexStatus.DELETED}}
-            )
+    async def list_indexes_by_project(self, project_id: str) -> List[IndexDB]:
+        cursor = self.db.indexes.find(
+            {"project_id": project_id, "status": {"$ne": IndexStatus.DELETED}}
         )
+        docs = await cursor.to_list(length=None)
         return [IndexDB(**doc) for doc in docs]
 
-    def delete_index(self, index_id: str) -> bool:
-        """HARD DELETE INDEX WITH QDRANT CLEANUP"""
+    async def delete_index(self, index_id: str) -> bool:
+        """ASYNC HARD DELETE INDEX WITH QDRANT CLEANUP"""
         try:
-            log_print(f"🗑️ HARD DELETING index: {index_id}")
+            log_print(f"🗑️ ASYNC HARD DELETING index: {index_id}")
 
-            # Delete Qdrant collection
+            # Delete Qdrant collection (run in executor to avoid blocking)
             try:
-                qdrant_service.delete_collection(index_id)
+                await asyncio.get_event_loop().run_in_executor(
+                    None, qdrant_service.delete_collection, index_id
+                )
                 log_print(f"🗑️ Deleted Qdrant collection: {index_id}")
             except Exception as e:
                 log_print(f"⚠️ Failed to delete Qdrant collection {index_id}: {str(e)}")
 
             # HARD DELETE index from MongoDB
-            result = self.db.indexes.delete_one({"id": index_id})
+            result = await self.db.indexes.delete_one({"id": index_id})
 
             if result.deleted_count > 0:
-                log_print(f"✅ Successfully HARD DELETED index: {index_id}")
+                log_print(f"✅ Successfully ASYNC HARD DELETED index: {index_id}")
                 return True
             else:
                 log_print(f"❌ Index {index_id} not found")
                 return False
 
         except Exception as e:
-            log_print(f"❌ Error HARD DELETING index {index_id}: {str(e)}")
+            log_print(f"❌ Error ASYNC HARD DELETING index {index_id}: {str(e)}")
             return False
 
 mongodb_service = MongoDBService()

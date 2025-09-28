@@ -1,8 +1,9 @@
 from minio import Minio
 import io
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from app.config import settings
 from app.utils.logging import log_print
-
 
 class MinIOService:
     def __init__(self):
@@ -17,43 +18,65 @@ class MinIOService:
         if not self.client.bucket_exists(settings.MINIO_BUCKET_NAME):
             self.client.make_bucket(settings.MINIO_BUCKET_NAME)
 
-        log_print("✅ MinIO service initialized")
+        # Thread pool executor for blocking operations
+        self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="minio-")
+        log_print("✅ Async MinIO service initialized")
 
-    def upload_markdown(self, job_id: str, content: str) -> str:
-        """Upload markdown content to MinIO"""
-        md_filename = f"{job_id}.md"
-        markdown_bytes = content.encode("utf-8")
-        markdown_stream = io.BytesIO(markdown_bytes)
+    async def close(self):
+        """Close the thread pool executor"""
+        self.executor.shutdown(wait=True)
 
-        self.client.put_object(
-            bucket_name=settings.MINIO_BUCKET_NAME,
-            object_name=md_filename,
-            data=markdown_stream,
-            length=len(markdown_bytes),
-            content_type="text/markdown",
-        )
-
-        log_print(f"📤 Saved to MinIO: {md_filename} ({len(markdown_bytes)} bytes)")
-        return md_filename
-
-    def download_markdown(self, job_id: str) -> str:
-        """Download markdown content from MinIO"""
-        md_filename = f"{job_id}.md"
-        response = self.client.get_object(settings.MINIO_BUCKET_NAME, md_filename)
-        content = response.read().decode()
-        log_print(f"📥 Downloaded from MinIO: {md_filename} ({len(content)} chars)")
-        return content
-
-    def delete_markdown(self, job_id: str) -> bool:
-        """Delete markdown file from MinIO"""
-        try:
+    async def upload_markdown(self, job_id: str, content: str) -> str:
+        """Upload markdown content to MinIO - ASYNC VERSION"""
+        def _sync_upload():
             md_filename = f"{job_id}.md"
-            self.client.remove_object(settings.MINIO_BUCKET_NAME, md_filename)
-            log_print(f"🗑️ Deleted from MinIO: {md_filename}")
-            return True
-        except Exception as e:
-            log_print(f"❌ Failed to delete from MinIO {job_id}: {str(e)}")
-            return False
+            markdown_bytes = content.encode("utf-8")
+            markdown_stream = io.BytesIO(markdown_bytes)
 
+            self.client.put_object(
+                bucket_name=settings.MINIO_BUCKET_NAME,
+                object_name=md_filename,
+                data=markdown_stream,
+                length=len(markdown_bytes),
+                content_type="text/markdown",
+            )
+
+            log_print(f"📤 Async saved to MinIO: {md_filename} ({len(markdown_bytes)} bytes)")
+            return md_filename
+
+        # Run blocking operation in thread executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, _sync_upload)
+
+    async def download_markdown(self, job_id: str) -> str:
+        """Download markdown content from MinIO - ASYNC VERSION"""
+        def _sync_download():
+            md_filename = f"{job_id}.md"
+            response = self.client.get_object(settings.MINIO_BUCKET_NAME, md_filename)
+            content = response.read().decode()
+            response.close()
+            response.release_conn()
+            log_print(f"📥 Async downloaded from MinIO: {md_filename} ({len(content)} chars)")
+            return content
+
+        # Run blocking operation in thread executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, _sync_download)
+
+    async def delete_markdown(self, job_id: str) -> bool:
+        """Delete markdown file from MinIO - ASYNC VERSION"""
+        def _sync_delete():
+            try:
+                md_filename = f"{job_id}.md"
+                self.client.remove_object(settings.MINIO_BUCKET_NAME, md_filename)
+                log_print(f"🗑️ Async deleted from MinIO: {md_filename}")
+                return True
+            except Exception as e:
+                log_print(f"❌ Failed to async delete from MinIO {job_id}: {str(e)}")
+                return False
+
+        # Run blocking operation in thread executor
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self.executor, _sync_delete)
 
 minio_service = MinIOService()
