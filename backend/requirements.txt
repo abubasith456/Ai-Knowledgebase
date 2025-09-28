@@ -14,3 +14,4 @@ scrapy
 scrapy-playwright 
 aiohttp
 aiofiles
+motor
