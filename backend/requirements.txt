@@ -8,10 +8,9 @@ torch
 docling
 minio
 pymongo
+playwright
 qdrant_client
 markdownify
-scrapy
-scrapy-playwright 
 aiohttp
 aiofiles
 motor
