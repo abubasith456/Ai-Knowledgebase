@@ -155,86 +155,71 @@ async def sync_background_task(
         )
         log_print(f"📊 [SYNC] Processing {len(index_doc.job_ids)} documents")
 
-        collection_name = index_id
-        total_chunks = 0
-        embedding_dimension = None
-
+        # Download all documents
+        all_documents = {}
         for job_id in index_doc.job_ids:
             try:
-                # Download document content
                 content = await minio_service.download_markdown(job_id)
+                all_documents[job_id] = content
                 log_print(f"📥 [SYNC] Downloaded content for job: {job_id}")
-
-                # Create chunks for this document only
-                log_print(f"🔪 [SYNC] Creating chunks for document: {job_id}")
-                chunks = create_chunks(content, chunk_ratio, overlap_ratio)
-
-                if not chunks:
-                    log_print(f"⚠️ [SYNC] No chunks created for job {job_id}")
-                    continue
-
-                log_print(
-                    f"✅ [SYNC] Created {len(chunks)} chunks for document: {job_id}"
-                )
-
-                # Get embeddings for this document's chunks
-                log_print(
-                    f"🤖 [SYNC] Getting embeddings from NVIDIA model: {embedding_model}"
-                )
-                embeddings = await nvidia_service.get_embeddings(
-                    chunks, embedding_model
-                )
-                log_print(
-                    f"✅ [SYNC] Got embeddings: {len(embeddings)} vectors, dimension: {len(embeddings[0])}"
-                )
-
-                # Store dimension from first successful embedding
-                if embedding_dimension is None:
-                    embedding_dimension = len(embeddings[0])
-
-                # Create/check Qdrant collection (only creates if doesn't exist)
-                log_print(
-                    f"🔧 [SYNC] Creating/checking Qdrant collection: {collection_name}"
-                )
-                await qdrant_service.create_collection(
-                    collection_name, embedding_dimension
-                )
-
-                # Create metadata for each chunk with source document info
-                chunk_metadata = [job_id] * len(chunks)
-
-                # Upsert this document's chunks to the collection
-                log_print(
-                    f"💾 [SYNC] Upserting {len(chunks)} chunks to Qdrant for job: {job_id}"
-                )
-                await qdrant_service.upsert_points_with_metadata(
-                    collection_name, chunks, embeddings, chunk_metadata
-                )
-
-                total_chunks += len(chunks)
-                log_print(
-                    f"✅ [SYNC] Successfully processed job: {job_id} ({len(chunks)} chunks)"
-                )
-
             except Exception as e:
-                log_print(f"⚠️ [SYNC] Failed to process job {job_id}: {str(e)}")
+                log_print(f"⚠️ [SYNC] Failed to download job {job_id}: {str(e)}")
                 continue
 
-        if total_chunks == 0:
-            raise Exception("No chunks created from any document")
+        if not all_documents:
+            raise Exception("No content downloaded from any job")
 
-        # Update index status with total stats
+        # Chunk EACH document separately, then combine all chunks
+        all_chunks = []
+        chunk_to_job_mapping = []  # Track which job_id each chunk belongs to
+
+        for job_id, content in all_documents.items():
+            log_print(f"🔪 [SYNC] Creating chunks for document: {job_id}")
+            doc_chunks = create_chunks(content, chunk_ratio, overlap_ratio)
+
+            if doc_chunks:
+                all_chunks.extend(doc_chunks)
+                chunk_to_job_mapping.extend([job_id] * len(doc_chunks))
+                log_print(
+                    f"✅ [SYNC] Created {len(doc_chunks)} chunks for job: {job_id}"
+                )
+
+        if not all_chunks:
+            raise Exception("No chunks created")
+
+        log_print(
+            f"✅ [SYNC] Created {len(all_chunks)} chunks from {len(all_documents)} documents"
+        )
+
+        # Batch embed all chunks at once
+        log_print(f"🤖 [SYNC] Getting embeddings from NVIDIA model: {embedding_model}")
+        log_print(f"📊 [SYNC] About to call NVIDIA API with {len(all_chunks)} texts")
+
+        embeddings = await nvidia_service.get_embeddings(all_chunks, embedding_model)
+        log_print(
+            f"✅ [SYNC] Got embeddings: {len(embeddings)} vectors, dimension: {len(embeddings[0])}"
+        )
+
+        collection_name = index_id
+        log_print(f"🔧 [SYNC] Creating/checking Qdrant collection: {collection_name}")
+        await qdrant_service.create_collection(collection_name, len(embeddings[0]))
+
+        # Upsert all chunks with their metadata
+        await qdrant_service.upsert_points_with_metadata(
+            collection_name, all_chunks, embeddings, chunk_to_job_mapping
+        )
+
         await mongodb_service.update_index_status(
             index_id,
             IndexStatus.SYNCED,
             synced=True,
-            chunks_count=total_chunks,
-            embedding_dimension=embedding_dimension,
+            chunks_count=len(all_chunks),
+            embedding_dimension=len(embeddings[0]),
             sync_completed_at=datetime.now(),
         )
 
         log_print(
-            f"✅ [SYNC] Background sync completed successfully for index: {index_id} with {len(index_doc.job_ids)} documents, {total_chunks} total chunks"
+            f"✅ [SYNC] Background sync completed successfully for index: {index_id} with {len(index_doc.job_ids)} documents"
         )
 
     except Exception as e:
