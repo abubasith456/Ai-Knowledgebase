@@ -21,6 +21,7 @@ from app.utils.logging import log_print
 
 router = APIRouter()
 
+
 @router.post("/{project_id}/create", response_model=StandardResponse[IndexResponse])
 async def create_index(project_id: str, request: IndexCreate):
     """Create a new index from completed jobs (max 5 jobs)"""
@@ -75,6 +76,7 @@ async def create_index(project_id: str, request: IndexCreate):
     except Exception as e:
         log_print(f"❌ Failed to create index: {str(e)}")
         return StandardResponse.failed(error=str(e))
+
 
 @router.post("/sync", response_model=StandardResponse)
 async def sync_index(request: IndexSync, background_tasks: BackgroundTasks):
@@ -136,6 +138,7 @@ async def sync_index(request: IndexSync, background_tasks: BackgroundTasks):
         log_print(f"❌ Sync failed: {str(e)}")
         return StandardResponse.failed(error=str(e))
 
+
 async def sync_background_task(
     index_id: str, embedding_model: str, chunk_ratio: float, overlap_ratio: float
 ):
@@ -152,73 +155,86 @@ async def sync_background_task(
         )
         log_print(f"📊 [SYNC] Processing {len(index_doc.job_ids)} documents")
 
-        all_content = []
+        collection_name = index_id
+        total_chunks = 0
+        embedding_dimension = None
+
         for job_id in index_doc.job_ids:
             try:
+                # Download document content
                 content = await minio_service.download_markdown(job_id)
-                all_content.append(f"# Document: {job_id}\n\n{content}")
                 log_print(f"📥 [SYNC] Downloaded content for job: {job_id}")
+
+                # Create chunks for this document only
+                log_print(f"🔪 [SYNC] Creating chunks for document: {job_id}")
+                chunks = create_chunks(content, chunk_ratio, overlap_ratio)
+
+                if not chunks:
+                    log_print(f"⚠️ [SYNC] No chunks created for job {job_id}")
+                    continue
+
+                log_print(
+                    f"✅ [SYNC] Created {len(chunks)} chunks for document: {job_id}"
+                )
+
+                # Get embeddings for this document's chunks
+                log_print(
+                    f"🤖 [SYNC] Getting embeddings from NVIDIA model: {embedding_model}"
+                )
+                embeddings = await nvidia_service.get_embeddings(
+                    chunks, embedding_model
+                )
+                log_print(
+                    f"✅ [SYNC] Got embeddings: {len(embeddings)} vectors, dimension: {len(embeddings[0])}"
+                )
+
+                # Store dimension from first successful embedding
+                if embedding_dimension is None:
+                    embedding_dimension = len(embeddings[0])
+
+                # Create/check Qdrant collection (only creates if doesn't exist)
+                log_print(
+                    f"🔧 [SYNC] Creating/checking Qdrant collection: {collection_name}"
+                )
+                await qdrant_service.create_collection(
+                    collection_name, embedding_dimension
+                )
+
+                # Create metadata for each chunk with source document info
+                chunk_metadata = [job_id] * len(chunks)
+
+                # Upsert this document's chunks to the collection
+                log_print(
+                    f"💾 [SYNC] Upserting {len(chunks)} chunks to Qdrant for job: {job_id}"
+                )
+                await qdrant_service.upsert_points_with_metadata(
+                    collection_name, chunks, embeddings, chunk_metadata
+                )
+
+                total_chunks += len(chunks)
+                log_print(
+                    f"✅ [SYNC] Successfully processed job: {job_id} ({len(chunks)} chunks)"
+                )
+
             except Exception as e:
-                log_print(f"⚠️ [SYNC] Failed to download job {job_id}: {str(e)}")
+                log_print(f"⚠️ [SYNC] Failed to process job {job_id}: {str(e)}")
                 continue
 
-        if not all_content:
-            raise Exception("No content downloaded from any job")
+        if total_chunks == 0:
+            raise Exception("No chunks created from any document")
 
-        combined_content = "\n\n---\n\n".join(all_content)
-        log_print(f"📝 [SYNC] Combined content: {len(combined_content)} chars")
-
-        log_print(
-            f"🔪 [SYNC] Creating chunks with ratio {chunk_ratio}, overlap {overlap_ratio}"
-        )
-        chunks = create_chunks(combined_content, chunk_ratio, overlap_ratio)
-        if not chunks:
-            raise Exception("No chunks created")
-
-        log_print(
-            f"✅ [SYNC] Created {len(chunks)} chunks from {len(all_content)} documents"
-        )
-
-        log_print(f"🤖 [SYNC] Getting embeddings from NVIDIA model: {embedding_model}")
-        log_print(f"📊 [SYNC] About to call NVIDIA API with {len(chunks)} texts")
-
-        embeddings = await nvidia_service.get_embeddings(chunks, embedding_model)
-        log_print(
-            f"✅ [SYNC] Got embeddings: {len(embeddings)} vectors, dimension: {len(embeddings[0])}"
-        )
-
-        collection_name = index_id
-        log_print(f"🔧 [SYNC] Creating/checking Qdrant collection: {collection_name}")
-        await qdrant_service.create_collection(collection_name, len(embeddings[0]))
-
-        enhanced_chunks = []
-        enhanced_embeddings = []
-
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-            doc_source = "unknown"
-            for j, job_id in enumerate(index_doc.job_ids):
-                if f"Document: {job_id}" in chunk:
-                    doc_source = job_id
-                    break
-
-            enhanced_chunks.append(chunk)
-            enhanced_embeddings.append(embedding)
-
-        await qdrant_service.upsert_points_with_metadata(
-            collection_name, enhanced_chunks, enhanced_embeddings, index_doc.job_ids
-        )
-
+        # Update index status with total stats
         await mongodb_service.update_index_status(
             index_id,
             IndexStatus.SYNCED,
             synced=True,
-            chunks_count=len(chunks),
-            embedding_dimension=len(embeddings[0]),
+            chunks_count=total_chunks,
+            embedding_dimension=embedding_dimension,
             sync_completed_at=datetime.now(),
         )
 
         log_print(
-            f"✅ [SYNC] Background sync completed successfully for index: {index_id} with {len(index_doc.job_ids)} documents"
+            f"✅ [SYNC] Background sync completed successfully for index: {index_id} with {len(index_doc.job_ids)} documents, {total_chunks} total chunks"
         )
 
     except Exception as e:
@@ -284,6 +300,7 @@ async def query_index(request: QueryRequest):
         log_print(f"❌ Query failed: {str(e)}")
         return StandardResponse.failed(error=str(e))
 
+
 @router.get("/{project_id}/", response_model=StandardResponse)
 async def list_project_indexes(project_id: str):
     """List all indexes for a project"""
@@ -311,6 +328,7 @@ async def list_project_indexes(project_id: str):
     except Exception as e:
         log_print(f"❌ Failed to list project indexes: {str(e)}")
         return StandardResponse.failed(error=str(e))
+
 
 @router.get("/{index_id}", response_model=StandardResponse)
 async def get_index_status(index_id: str):
@@ -340,6 +358,7 @@ async def get_index_status(index_id: str):
     except Exception as e:
         log_print(f"❌ Failed to get index status: {str(e)}")
         return StandardResponse.failed(error=str(e))
+
 
 @router.delete("/{index_id}", response_model=StandardResponse)
 async def delete_index(index_id: str):
