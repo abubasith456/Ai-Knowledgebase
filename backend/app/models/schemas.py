@@ -177,6 +177,14 @@ class IndexCreate(BaseModel):
         return v
 
 
+class IndexUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Updated index name")
+    description: Optional[str] = Field(None, description="Updated index description")
+    job_ids: Optional[List[str]] = Field(
+        None, description="Updated job IDs (max 5, triggers re-sync)"
+    )
+
+
 class IndexSync(BaseModel):
     index_id: str
     embedding_model: str = "nvidia/llama-3.2-nv-embedqa-1b-v2"

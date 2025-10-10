@@ -242,6 +242,18 @@ class MongoDBService:
         await self.db.indexes.insert_one(index_dict)
         return index.id
 
+    async def update_index(self, index_id: str, update_data: dict) -> bool:
+        """Update index with provided data"""
+        try:
+            result = await self.db.indexes.update_one(
+                {"id": index_id},
+                {"$set": update_data},
+            )
+            return result.modified_count > 0
+        except Exception as e:
+            log_print(f"❌ Failed to update index: {str(e)}")
+            return False
+
     async def update_index_status(self, index_id: str, status: IndexStatus, **kwargs):
         update_data = {"status": status, "updated_at": datetime.now()}
         update_data.update(kwargs)
@@ -261,5 +273,6 @@ class MongoDBService:
         )
         docs = await cursor.to_list(length=None)
         return [IndexDB(**doc) for doc in docs]
+
 
 mongodb_service = MongoDBService()
